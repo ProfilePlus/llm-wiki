@@ -1,10 +1,15 @@
 # Wiki CLI
 
+<p align="center">
+  <strong>
+    <a href="README_EN.md">🇬🇧 English</a> | <a href="README.md">🇨🇳 中文</a>
+  </strong>
+</p>
+
 > Local knowledge management system based on Karpathy's LLM Wiki pattern
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![中文文档](https://img.shields.io/badge/docs-中文-red)](README.md)
 
 A lightweight, zero-overhead local LLM Wiki tool. Let AI maintain a persistent, cross-referenced knowledge base instead of re-deriving answers from raw documents every time.
 

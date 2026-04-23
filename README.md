@@ -1,10 +1,15 @@
 # Wiki CLI
 
+<p align="center">
+  <strong>
+    <a href="README.md">🇨🇳 中文</a> | <a href="README_EN.md">🇬🇧 English</a>
+  </strong>
+</p>
+
 > 基于 Karpathy LLM Wiki 模式的本地知识管理系统
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![English](https://img.shields.io/badge/docs-English-blue)](README_EN.md)
 
 一个轻量级、零资源占用的本地 LLM Wiki 工具。让 AI 帮你维护一个持久化、交叉引用的知识库，而非每次查询都重新检索原始文档。
 
