@@ -38,7 +38,7 @@ def lint(ctx):
         console.print("[cyan]正在检查 wiki 健康度...[/cyan]")
 
     try:
-        result = lint_wiki_sync(wiki_path, provider)
+        result = lint_wiki_sync(wiki_path, provider, wiki_ctx.language)
     except Exception as e:
         if is_machine_mode():
             output_json({"error": str(e)})

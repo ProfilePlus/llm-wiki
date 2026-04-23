@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .provider_base import LLMProvider
-from .prompts import INGEST_SYSTEM
+from .prompts import get_ingest_prompt
 from .wiki_fs import read_page, write_page, append_page
 
 
@@ -15,6 +15,7 @@ async def ingest_file(
     topic: str,
     domain_path: Path,
     provider: LLMProvider,
+    language: str = "zh",
 ) -> dict:
     """
     Ingest a source file into the wiki.
@@ -90,7 +91,7 @@ async def ingest_file(
 """
 
     response = await provider.complete(
-        system=INGEST_SYSTEM,
+        system=get_ingest_prompt(language),
         messages=[{"role": "user", "content": user_message}],
         max_tokens=8000,
     )
@@ -155,6 +156,6 @@ async def ingest_file(
     }
 
 
-def ingest_file_sync(source_path: Path, topic: str, domain_path: Path, provider: LLMProvider) -> dict:
+def ingest_file_sync(source_path: Path, topic: str, domain_path: Path, provider: LLMProvider, language: str = "zh") -> dict:
     """Synchronous wrapper for ingest_file."""
-    return asyncio.run(ingest_file(source_path, topic, domain_path, provider))
+    return asyncio.run(ingest_file(source_path, topic, domain_path, provider, language))

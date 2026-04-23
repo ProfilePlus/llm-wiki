@@ -38,7 +38,7 @@ def query(ctx, question):
         console.print(f"[cyan]查询:[/cyan] {question}")
 
     try:
-        result = query_wiki_sync(question, wiki_path, provider)
+        result = query_wiki_sync(question, wiki_path, provider, wiki_ctx.language)
     except Exception as e:
         if is_machine_mode():
             output_json({"error": str(e)})

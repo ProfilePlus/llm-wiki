@@ -41,7 +41,7 @@ def ingest(ctx, source, topic):
         console.print(f"[cyan]正在摄入[/cyan] {source_path.name} → topic: {topic}...")
 
     try:
-        result = ingest_file_sync(source_path, topic, domain_path, provider)
+        result = ingest_file_sync(source_path, topic, domain_path, provider, wiki_ctx.language)
     except Exception as e:
         if is_machine_mode():
             output_json({"error": str(e)})

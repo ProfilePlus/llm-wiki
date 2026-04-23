@@ -5,13 +5,13 @@ import json
 from pathlib import Path
 
 from .provider_base import LLMProvider
-from .prompts import LINT_SYSTEM
+from .prompts import get_lint_prompt
 from .link_parser import build_link_graph, find_orphans, find_broken
 from .page_types import type_counts
 from .wiki_fs import iter_wiki_pages
 
 
-async def lint_wiki(wiki_dir: Path, provider: LLMProvider) -> dict:
+async def lint_wiki(wiki_dir: Path, provider: LLMProvider, language: str = "zh") -> dict:
     """
     Run health checks on the wiki.
 
@@ -102,7 +102,7 @@ async def lint_wiki(wiki_dir: Path, provider: LLMProvider) -> dict:
 """
 
     response = await provider.complete(
-        system=LINT_SYSTEM,
+        system=get_lint_prompt(language),
         messages=[{"role": "user", "content": user_message}],
         max_tokens=4000,
     )
@@ -133,6 +133,6 @@ async def lint_wiki(wiki_dir: Path, provider: LLMProvider) -> dict:
     }
 
 
-def lint_wiki_sync(wiki_dir: Path, provider: LLMProvider) -> dict:
+def lint_wiki_sync(wiki_dir: Path, provider: LLMProvider, language: str = "zh") -> dict:
     """Synchronous wrapper for lint_wiki."""
-    return asyncio.run(lint_wiki(wiki_dir, provider))
+    return asyncio.run(lint_wiki(wiki_dir, provider, language))

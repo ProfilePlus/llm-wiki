@@ -51,6 +51,7 @@ def show_welcome(wiki_ctx: WikiContext):
 
     table.add_row("Domain", domain)
     table.add_row("Provider", provider)
+    table.add_row("Language", "中文" if wiki_ctx.language == "zh" else "English")
     table.add_row("Data Dir", data_dir)
     table.add_row("Pages", str(pages_count))
     table.add_row("Raw Docs", str(raw_count))
@@ -83,6 +84,7 @@ from .commands.log import log
 from .commands.ingest import ingest
 from .commands.query import query
 from .commands.lint import lint
+from .commands.language import language
 
 cli.add_command(init)
 cli.add_command(domain)
@@ -102,6 +104,7 @@ cli.add_command(log)
 cli.add_command(ingest)
 cli.add_command(query)
 cli.add_command(lint)
+cli.add_command(language)
 
 
 if __name__ == "__main__":

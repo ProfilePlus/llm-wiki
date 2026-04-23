@@ -28,6 +28,11 @@ class WikiContext:
         return self.config.get("active_provider")
 
     @property
+    def language(self) -> str:
+        """Get configured language (zh or en)."""
+        return self.config.get("language", "zh")
+
+    @property
     def domain_path(self) -> Path | None:
         """Get active domain path."""
         if not self.active_domain:

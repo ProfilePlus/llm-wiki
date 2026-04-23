@@ -4,11 +4,11 @@ import asyncio
 from pathlib import Path
 
 from .provider_base import LLMProvider
-from .prompts import QUERY_SYSTEM
+from .prompts import get_query_prompt
 from .wiki_fs import iter_wiki_pages, read_page
 
 
-async def query_wiki(question: str, wiki_dir: Path, provider: LLMProvider) -> dict:
+async def query_wiki(question: str, wiki_dir: Path, provider: LLMProvider, language: str = "zh") -> dict:
     """
     Query the wiki using the LLM.
 
@@ -79,7 +79,7 @@ async def query_wiki(question: str, wiki_dir: Path, provider: LLMProvider) -> di
 """
 
     answer = await provider.complete(
-        system=QUERY_SYSTEM,
+        system=get_query_prompt(language),
         messages=[{"role": "user", "content": user_message}],
         max_tokens=4000,
     )
@@ -91,6 +91,6 @@ async def query_wiki(question: str, wiki_dir: Path, provider: LLMProvider) -> di
     }
 
 
-def query_wiki_sync(question: str, wiki_dir: Path, provider: LLMProvider) -> dict:
+def query_wiki_sync(question: str, wiki_dir: Path, provider: LLMProvider, language: str = "zh") -> dict:
     """Synchronous wrapper for query_wiki."""
-    return asyncio.run(query_wiki(question, wiki_dir, provider))
+    return asyncio.run(query_wiki(question, wiki_dir, provider, language))
