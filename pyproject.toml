@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wiki-cli"
+version = "0.1.0"
+description = "Local LLM Wiki CLI - Karpathy's compiled wiki pattern"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.1,<9",
+    "rich>=13.0,<16",
+    "anthropic>=0.40,<1",
+    "openai>=1.50,<2",
+]
+
+[project.optional-dependencies]
+pdf = ["pdfplumber>=0.11"]
+
+[project.scripts]
+wiki = "wiki_cli.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
