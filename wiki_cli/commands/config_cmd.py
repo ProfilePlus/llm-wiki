@@ -32,43 +32,41 @@ def config(ctx):
 @click.argument("value", required=False)
 def config_set(key, value):
     """设置配置项。"""
-    import questionary
-    from prompt_toolkit.styles import Style
+    from InquirerPy import inquirer
+    from InquirerPy.base.control import Choice
+    from InquirerPy.separator import Separator
     cfg = load_config()
     if not key:
         keys = [k for k in cfg.keys() if k != "providers"]
         width = max(len(k) for k in keys) + 2
         choices = [
-            questionary.Choice(f"{k:<{width}}  =  {cfg.get(k,'')}", value=k)
+            Choice(value=k, name=f"{k:<{width}}  →  {cfg.get(k,'')}")
             for k in keys
-        ] + [questionary.Separator(), questionary.Choice("✎  手动输入其他键名", value="__other__")]
-        style = Style([
-            ("qmark", "fg:#5f87ff bold"),
-            ("question", "bold"),
-            ("pointer", "fg:#5f87ff bold"),
-            ("highlighted", "fg:#5f87ff bold"),
-            ("selected", "fg:#5fafff"),
-        ])
-        key = questionary.select(
-            "选择要修改的配置项",
+        ] + [Separator(line="─" * 40), Choice(value="__other__", name="✎  手动输入其他键名")]
+        key = inquirer.select(
+            message="选择要修改的配置项:",
             choices=choices,
-            default=choices[0],
-            style=style,
-            instruction="(↑↓ 选择, Enter 确认)",
-            use_shortcuts=True,
-        ).ask()
+            default=keys[0],
+            qmark="▸",
+            amark="✓",
+            pointer="❯",
+            instruction="(↑↓ 选择, Enter 确认, Ctrl-C 取消)",
+            border=True,
+            cycle=True,
+        ).execute()
         if key is None:
             return
         if key == "__other__":
-            key = questionary.text("配置项名称", style=style).ask()
+            key = inquirer.text(message="配置项名称:", qmark="▸").execute()
             if not key:
                 return
     if value is None:
         current = cfg.get(key, "")
-        value = questionary.text(
-            f"{key} 的值",
+        value = inquirer.text(
+            message=f"{key} 的值:",
             default=str(current) if current else "",
-        ).ask()
+            qmark="▸",
+        ).execute()
         if value is None:
             return
     cfg[key] = value

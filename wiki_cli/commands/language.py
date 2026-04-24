@@ -22,16 +22,21 @@ def language(ctx, lang):
         if is_machine_mode():
             output_json({"language": current, "supported": SUPPORTED_LANGUAGES})
             return
-        import questionary
+        from InquirerPy import inquirer
+        from InquirerPy.base.control import Choice
         console.print(f"当前语言: [cyan]{current}[/cyan]")
-        lang = questionary.select(
-            "选择语言",
+        lang = inquirer.select(
+            message="选择语言:",
             choices=[
-                questionary.Choice("中文 (zh)", value="zh"),
-                questionary.Choice("English (en)", value="en"),
+                Choice(value="zh", name="🇨🇳  中文 (zh)"),
+                Choice(value="en", name="🇬🇧  English (en)"),
             ],
-            default="中文 (zh)" if current == "zh" else "English (en)",
-        ).ask()
+            default=current,
+            qmark="▸",
+            pointer="❯",
+            instruction="(↑↓ 选择, Enter 确认)",
+            border=True,
+        ).execute()
         if lang is None or lang == current:
             return
 
