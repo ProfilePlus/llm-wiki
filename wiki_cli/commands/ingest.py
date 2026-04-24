@@ -183,13 +183,25 @@ def ingest_url(ctx, url, topic):
 
     console.print(f"[green]✓[/green] 抓取成功 ({len(content)} 字符)")
 
-    # slug 用于文件名
-    from urllib.parse import urlparse
-    slug = urlparse(url).path.strip("/").replace("/", "-")[:50] or "web-article"
-
     # 提取标题（第一个 # 标题）
     title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
-    article_title = title_match.group(1) if title_match else slug
+    article_title = title_match.group(1) if title_match else None
+
+    # 如果没有标题，尝试从正文第一段提取（前50字符）
+    if not article_title:
+        first_line = content.split("\n")[0].strip("#> \t")
+        if first_line and len(first_line) > 5:
+            article_title = first_line[:50]
+
+    # slug 用于文件名（优先用标题，否则用 URL）
+    from urllib.parse import urlparse
+    if article_title:
+        # 标题转 slug：去特殊字符、转拼音首字母或保留中文
+        title_slug = re.sub(r'[^\w\s一-鿿-]', '', article_title)
+        title_slug = re.sub(r'\s+', '-', title_slug.strip())[:50]
+        slug = title_slug if title_slug else urlparse(url).path.strip("/").replace("/", "-")[:50]
+    else:
+        slug = urlparse(url).path.strip("/").replace("/", "-")[:50] or "web-article"
 
     # 检测长图文（图片多、文字少）
     images = re.findall(r'!\[.*?\]\((.*?)\)', content)
