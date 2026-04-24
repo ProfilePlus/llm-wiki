@@ -4,10 +4,14 @@ import os
 import sys
 import signal
 import logging
+import subprocess
+import platform
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+IS_WINDOWS = platform.system() == "Windows"
 
 
 class WikiDaemon:
@@ -24,18 +28,45 @@ class WikiDaemon:
         self.pid_file = pid_file
         self.log_file = log_file
 
-    def start(self, target_func, *args, **kwargs):
+    def start(self, target_func=None, *args, **kwargs):
         """
         Start daemon process.
 
         Args:
-            target_func: Function to run in daemon mode
+            target_func: Function to run in daemon mode (Unix only)
             *args, **kwargs: Arguments for target function
         """
         # Check if already running
         if self.is_running():
             raise RuntimeError(f"Daemon already running (PID: {self.get_pid()})")
 
+        if IS_WINDOWS:
+            return self._start_windows()
+        else:
+            return self._start_unix(target_func, *args, **kwargs)
+
+    def _start_windows(self):
+        """Start daemon on Windows using subprocess."""
+        # 启动一个新的 Python 进程运行 wiki mcp serve
+        cmd = [sys.executable, "-m", "wiki_cli.main", "mcp", "serve"]
+
+        with open(self.log_file, "a") as log:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=log,
+                stderr=log,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+                close_fds=True,
+            )
+
+        # Write PID file
+        with open(self.pid_file, "w") as f:
+            f.write(str(proc.pid))
+
+        return proc.pid
+
+    def _start_unix(self, target_func, *args, **kwargs):
+        """Start daemon on Unix using fork."""
         # Fork process
         try:
             pid = os.fork()
@@ -86,19 +117,21 @@ class WikiDaemon:
             raise RuntimeError("Daemon not running")
 
         try:
-            os.kill(pid, signal.SIGTERM)
-            # Wait for process to terminate
-            import time
-            for _ in range(10):
-                try:
-                    os.kill(pid, 0)
-                    time.sleep(0.5)
-                except OSError:
-                    break
+            if IS_WINDOWS:
+                import subprocess
+                subprocess.run(["taskkill", "/F", "/PID", str(pid)], check=True, capture_output=True)
             else:
-                # Force kill if still running
-                os.kill(pid, signal.SIGKILL)
-        except OSError as e:
+                import time
+                os.kill(pid, signal.SIGTERM)
+                for _ in range(10):
+                    try:
+                        os.kill(pid, 0)
+                        time.sleep(0.5)
+                    except OSError:
+                        break
+                else:
+                    os.kill(pid, signal.SIGKILL)
+        except (OSError, subprocess.CalledProcessError) as e:
             raise RuntimeError(f"Failed to stop daemon: {e}")
         finally:
             self.cleanup()
@@ -109,11 +142,19 @@ class WikiDaemon:
         if not pid:
             return False
 
-        try:
-            os.kill(pid, 0)
-            return True
-        except OSError:
-            return False
+        if IS_WINDOWS:
+            import subprocess
+            result = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}"],
+                capture_output=True, text=True
+            )
+            return str(pid) in result.stdout
+        else:
+            try:
+                os.kill(pid, 0)
+                return True
+            except OSError:
+                return False
 
     def get_pid(self) -> Optional[int]:
         """Get daemon PID from file."""

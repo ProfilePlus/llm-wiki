@@ -6,10 +6,14 @@ from datetime import datetime
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
+from rich.tree import Tree
 
 from ..context import WikiContext
 
 console = Console()
+
+PRIORITY_ICONS = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+STATUS_ICONS = {"open": "⬜", "in_progress": "🟡", "closed": "✅"}
 
 
 @click.group()
@@ -62,8 +66,9 @@ def create(ctx, thread_id, title, description, priority, tags):
 
 @thread.command()
 @click.argument("thread_id")
+@click.option("--show-deps", is_flag=True, help="Show dependency tree")
 @click.pass_context
-def show(ctx, thread_id):
+def show(ctx, thread_id, show_deps):
     """Show thread details."""
     wiki_ctx: WikiContext = ctx.obj
 
@@ -81,12 +86,16 @@ def show(ctx, thread_id):
     with open(thread_file, "r", encoding="utf-8") as f:
         thread_data = json.load(f)
 
+    priority_icon = PRIORITY_ICONS.get(thread_data['priority'], "")
+    status_icon = STATUS_ICONS.get(thread_data['status'], "")
+
     console.print(f"\n[bold cyan]{thread_data['title']}[/bold cyan]")
     console.print(f"ID: {thread_data['id']}")
-    console.print(f"Status: {thread_data['status']}")
-    console.print(f"Priority: {thread_data['priority']}")
+    console.print(f"Status: {status_icon} {thread_data['status']}")
+    console.print(f"Priority: {priority_icon} {thread_data['priority']}")
     if thread_data.get('tags'):
-        console.print(f"Tags: {', '.join(thread_data['tags'])}")
+        tags_str = " ".join([f"#{tag}" for tag in thread_data['tags']])
+        console.print(f"Tags: {tags_str}")
     console.print(f"Created: {thread_data['created_at']}")
     console.print(f"Updated: {thread_data['updated_at']}")
 
@@ -94,15 +103,55 @@ def show(ctx, thread_id):
         console.print(f"\n{thread_data['description']}")
 
     if thread_data.get('dependencies'):
-        console.print(f"\nDependencies: {', '.join(thread_data['dependencies'])}")
+        console.print(f"\n[bold]Dependencies:[/bold]")
+        if show_deps:
+            tree = _build_dependency_tree(threads_dir, thread_id, set())
+            console.print(tree)
+        else:
+            for dep_id in thread_data['dependencies']:
+                console.print(f"  • {dep_id}")
+            console.print("[dim](Use --show-deps to see full tree)[/dim]")
 
     if thread_data.get('messages'):
-        console.print(f"\nMessages: {len(thread_data['messages'])}")
+        console.print(f"\n[bold]Messages ({len(thread_data['messages'])}):[/bold]")
+        for msg in thread_data['messages'][-5:]:  # 只显示最近 5 条
+            tool = msg.get('tool', 'unknown')
+            action = msg.get('action', '')
+            timestamp = msg['timestamp'][:16]
+            console.print(f"  [{timestamp}] [{tool}] {action}: {msg['content'][:60]}...")
+
+
+def _build_dependency_tree(threads_dir: Path, thread_id: str, visited: set) -> Tree:
+    """递归构建依赖树"""
+    if thread_id in visited:
+        return Tree(f"[dim]{thread_id} (循环依赖)[/dim]")
+
+    visited.add(thread_id)
+    thread_file = threads_dir / f"{thread_id}.json"
+
+    if not thread_file.exists():
+        return Tree(f"[red]{thread_id} (不存在)[/red]")
+
+    with open(thread_file, "r", encoding="utf-8") as f:
+        thread_data = json.load(f)
+
+    priority_icon = PRIORITY_ICONS.get(thread_data['priority'], "")
+    status_icon = STATUS_ICONS.get(thread_data['status'], "")
+    tree = Tree(f"{status_icon} {priority_icon} {thread_id}: {thread_data['title']}")
+
+    for dep_id in thread_data.get('dependencies', []):
+        subtree = _build_dependency_tree(threads_dir, dep_id, visited.copy())
+        tree.add(subtree)
+
+    return tree
 
 
 @thread.command()
+@click.option("--status", type=click.Choice(["open", "in_progress", "closed"]), help="Filter by status")
+@click.option("--priority", type=click.Choice(["low", "medium", "high"]), help="Filter by priority")
+@click.option("--tag", help="Filter by tag")
 @click.pass_context
-def list(ctx):
+def list(ctx, status, priority, tag):
     """List all threads."""
     wiki_ctx: WikiContext = ctx.obj
 
@@ -120,6 +169,13 @@ def list(ctx):
         try:
             with open(thread_file, "r", encoding="utf-8") as f:
                 thread_data = json.load(f)
+                # 过滤
+                if status and thread_data.get("status") != status:
+                    continue
+                if priority and thread_data.get("priority") != priority:
+                    continue
+                if tag and tag not in thread_data.get("tags", []):
+                    continue
                 threads.append(thread_data)
         except Exception:
             continue
@@ -128,22 +184,28 @@ def list(ctx):
         console.print("[dim]No threads found[/dim]")
         return
 
-    # Sort by updated_at
-    threads.sort(key=lambda t: t.get("updated_at", ""), reverse=True)
+    # Sort by priority (high > medium > low) then updated_at
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    threads.sort(key=lambda t: (priority_order.get(t.get("priority", "medium"), 1), t.get("updated_at", "")), reverse=True)
 
     table = Table(title="Threads")
     table.add_column("ID", style="cyan")
     table.add_column("Title", style="white")
     table.add_column("Status", style="yellow")
     table.add_column("Priority", style="magenta")
+    table.add_column("Tags", style="dim")
     table.add_column("Updated", style="dim")
 
     for t in threads:
+        status_icon = STATUS_ICONS.get(t["status"], "")
+        priority_icon = PRIORITY_ICONS.get(t["priority"], "")
+        tags_str = " ".join([f"#{tag}" for tag in t.get("tags", [])])
         table.add_row(
             t["id"],
             t["title"],
-            t["status"],
-            t["priority"],
+            f"{status_icon} {t['status']}",
+            f"{priority_icon} {t['priority']}",
+            tags_str,
             t["updated_at"][:10]
         )
 
@@ -154,9 +216,11 @@ def list(ctx):
 @click.argument("thread_id")
 @click.option("--status", type=click.Choice(["open", "in_progress", "closed"]))
 @click.option("--priority", type=click.Choice(["low", "medium", "high"]))
+@click.option("--add-tags", help="Add tags (comma-separated)")
+@click.option("--remove-tags", help="Remove tags (comma-separated)")
 @click.pass_context
-def update(ctx, thread_id, status, priority):
-    """Update thread status or priority."""
+def update(ctx, thread_id, status, priority, add_tags, remove_tags):
+    """Update thread status, priority, or tags."""
     wiki_ctx: WikiContext = ctx.obj
 
     if not wiki_ctx.domain_path:
@@ -173,10 +237,31 @@ def update(ctx, thread_id, status, priority):
     with open(thread_file, "r", encoding="utf-8") as f:
         thread_data = json.load(f)
 
+    changes = []
     if status:
         thread_data["status"] = status
+        changes.append(f"status → {status}")
     if priority:
         thread_data["priority"] = priority
+        changes.append(f"priority → {priority}")
+    if add_tags:
+        new_tags = [t.strip() for t in add_tags.split(",")]
+        existing = set(thread_data.get("tags", []))
+        for tag in new_tags:
+            existing.add(tag)
+        thread_data["tags"] = sorted(existing)
+        changes.append(f"added tags: {', '.join(new_tags)}")
+    if remove_tags:
+        rm_tags = [t.strip() for t in remove_tags.split(",")]
+        existing = set(thread_data.get("tags", []))
+        for tag in rm_tags:
+            existing.discard(tag)
+        thread_data["tags"] = sorted(existing)
+        changes.append(f"removed tags: {', '.join(rm_tags)}")
+
+    if not changes:
+        console.print("[yellow]No changes specified[/yellow]")
+        return
 
     thread_data["updated_at"] = datetime.now().isoformat()
 
@@ -184,6 +269,8 @@ def update(ctx, thread_id, status, priority):
         json.dump(thread_data, f, ensure_ascii=False, indent=2)
 
     console.print(f"[green]✓[/green] Thread updated: {thread_id}")
+    for change in changes:
+        console.print(f"  • {change}")
 
 
 @thread.command()
