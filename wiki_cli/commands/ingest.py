@@ -152,7 +152,7 @@ def ingest_url(ctx, url, topic):
 
     with console.status("[cyan]正在抓取网页...[/cyan]", spinner="dots"):
         try:
-            result = subprocess.run(cmd, capture_output=True, timeout=60, env=env)
+            result = subprocess.run(cmd, capture_output=True, timeout=180, env=env)
             content = result.stdout.decode("utf-8", errors="ignore").strip()
         except subprocess.TimeoutExpired:
             console.print("[red]抓取超时（60s）[/red]")
