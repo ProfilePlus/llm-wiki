@@ -182,6 +182,10 @@ def ingest_url(ctx, url, topic):
 
     console.print(f"[green]✓[/green] 抓取成功 ({len(content)} 字符)")
 
+    # slug 用于文件名
+    from urllib.parse import urlparse
+    slug = urlparse(url).path.strip("/").replace("/", "-")[:50] or "web-article"
+
     # 提取标题（第一个 # 标题）
     title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
     article_title = title_match.group(1) if title_match else slug
@@ -227,9 +231,6 @@ def ingest_url(ctx, url, topic):
         console.print(f"[green]✓[/green] 主题识别: [cyan]{topic}[/cyan]")
 
     # 3. 保存为临时文件
-    from urllib.parse import urlparse
-    slug = urlparse(url).path.strip("/").replace("/", "-")[:50] or "web-article"
-
     with tempfile.NamedTemporaryFile(mode="w", suffix=".md", encoding="utf-8", delete=False, prefix=f"{slug}-") as f:
         # 如果是长图文，添加提示
         if is_long_image:
