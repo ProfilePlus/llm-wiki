@@ -130,7 +130,12 @@ def ingest_url(ctx, url, topic):
         return
 
     stealth = any(d in url for d in STEALTH_DOMAINS)
-    cmd = ["python", str(FETCH_SCRIPT), url, "15000"]
+
+    # 图片保存目录
+    image_dir = wiki_ctx.domain_path / "wiki" / "assets" / "images"
+    image_dir.mkdir(parents=True, exist_ok=True)
+
+    cmd = ["python", str(FETCH_SCRIPT), url, "15000", "--download-images", str(image_dir)]
     if stealth:
         cmd.append("--stealth")
 
