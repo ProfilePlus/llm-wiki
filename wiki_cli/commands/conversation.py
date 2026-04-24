@@ -331,25 +331,99 @@ def _parse_codex_conversation(jsonl_file: Path) -> dict:
     }
 
 
-def _sync_conversation_to_wiki(conv: dict, wiki_ctx: WikiContext):
+def _sync_conversation_to_wiki(conv: dict, wiki_ctx: WikiContext, provider_override=None):
     """将对话同步到 wiki"""
     import asyncio
     from ..core.ingest_engine import ingest_conversation
 
     topic = conv.get("topic", "cc-conversations")
     conv_domain = _get_conversation_domain(wiki_ctx)
+    provider = provider_override or wiki_ctx.create_provider()
     try:
         return asyncio.run(ingest_conversation(
             conversation_id=conv["id"],
             messages=conv["messages"],
             topic=topic,
             domain_path=conv_domain,
-            provider=wiki_ctx.create_provider(),
+            provider=provider,
             language=wiki_ctx.language
         ))
     except Exception as e:
-        console.print(f"[red]同步失败 {conv['id']}: {e}[/red]")
+        console.print(f"[red]同步失败 {conv['id'][:20]}: {e}[/red]")
         return None
+
+
+def _create_providers(wiki_ctx: WikiContext) -> list:
+    """创建所有可用的 provider 实例，用于轮流调用"""
+    from ..config import load_config
+    providers = []
+    cfg = load_config()
+    for name, p_cfg in cfg.get("providers", {}).items():
+        try:
+            provider = wiki_ctx.create_provider(name)
+            providers.append((name, provider))
+        except Exception:
+            continue
+    return providers
+
+
+def _collect_all_pending(wiki_ctx: WikiContext, min_messages: int = 5) -> list:
+    """收集所有待处理的对话和 plan"""
+    sync_record_path = Path.home() / ".wiki" / "conversation_sync.json"
+    processed_files = set()
+    if sync_record_path.exists():
+        with open(sync_record_path, "r", encoding="utf-8") as f:
+            processed_files = set(json.load(f).get("processed", []))
+
+    all_items = []
+
+    # 扫描 Claude Code 对话
+    cc_dir = Path.home() / ".claude" / "projects"
+    if cc_dir.exists():
+        for jsonl_file in cc_dir.rglob("*.jsonl"):
+            if str(jsonl_file) in processed_files:
+                continue
+            conv = _parse_conversation(jsonl_file)
+            if conv and len(conv["messages"]) >= min_messages:
+                conv["tool"] = "Claude Code"
+                conv["topic"] = "cc-conversations"
+                all_items.append(conv)
+
+    # 扫描 CodeX 对话
+    codex_dir = Path.home() / ".codex" / "sessions"
+    if codex_dir.exists():
+        for jsonl_file in codex_dir.rglob("*.jsonl"):
+            if str(jsonl_file) in processed_files:
+                continue
+            conv = _parse_codex_conversation(jsonl_file)
+            if conv and len(conv["messages"]) >= min_messages:
+                conv["tool"] = "CodeX"
+                conv["topic"] = "codex-conversations"
+                all_items.append(conv)
+
+    # 扫描 Claude Code plan 文件
+    plans_dir = Path.home() / ".claude" / "plans"
+    if plans_dir.exists():
+        for plan_file in plans_dir.rglob("*.md"):
+            if str(plan_file) in processed_files:
+                continue
+            try:
+                content = plan_file.read_text(encoding="utf-8")
+                if len(content) < 100:
+                    continue
+                all_items.append({
+                    "id": f"plan-{plan_file.stem}",
+                    "file": str(plan_file),
+                    "messages": [{"role": "assistant", "content": content}],
+                    "tool": "Claude Code Plan",
+                    "topic": "cc-plans",
+                    "date": datetime.fromtimestamp(plan_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+                })
+            except Exception:
+                continue
+
+    all_items.sort(key=lambda c: len(c["messages"]), reverse=True)
+    return all_items, processed_files, sync_record_path
 
 
 @conversation.command()
@@ -389,10 +463,135 @@ def unschedule():
     """删除定时同步任务。"""
     import subprocess
     result = subprocess.run(
-        ["powershell", "-Command", "Unregister-ScheduledTask -TaskName 'WikiConversationSync' -Confirm:$false"],
+        ["powershell", "-Command", "Unregister-ScheduledTask -TaskName 'WikiConversationSync' -Confirm:$false; Unregister-ScheduledTask -TaskName 'WikiNightSync' -Confirm:$false -ErrorAction SilentlyContinue"],
         capture_output=True, text=True
     )
     if result.returncode == 0:
         console.print("[green]✓[/green] 已删除定时任务")
     else:
         console.print(f"[red]删除失败:[/red] {result.stderr}")
+
+
+@conversation.command()
+@click.option("--min-messages", default=5, help="最少消息数")
+@click.option("--dry-run", is_flag=True, help="预览模式")
+@click.pass_context
+def night(ctx, min_messages, dry_run):
+    """夜间批量处理：双 provider 轮流处理所有未导入的对话和 plan。"""
+    wiki_ctx: WikiContext = ctx.obj
+
+    if not wiki_ctx.data_dir:
+        console.print("[red]错误: 未初始化[/red]")
+        return
+
+    # 创建所有 provider
+    providers = _create_providers(wiki_ctx)
+    if not providers:
+        console.print("[red]错误: 没有可用的 provider[/red]")
+        return
+
+    console.print(f"[cyan]可用 Provider ({len(providers)}):[/cyan]")
+    for name, _ in providers:
+        console.print(f"  • {name}")
+
+    # 收集待处理项
+    all_items, processed_files, sync_record_path = _collect_all_pending(wiki_ctx, min_messages)
+
+    if not all_items:
+        console.print("[yellow]没有待处理的对话或 plan[/yellow]")
+        return
+
+    # 统计
+    conv_count = sum(1 for i in all_items if not i["id"].startswith("plan-"))
+    plan_count = sum(1 for i in all_items if i["id"].startswith("plan-"))
+    console.print(f"[green]待处理: {conv_count} 个对话, {plan_count} 个 plan[/green]")
+
+    if dry_run:
+        from rich.table import Table
+        table = Table(title="待处理项")
+        table.add_column("类型", style="cyan")
+        table.add_column("ID", style="white")
+        table.add_column("消息数", style="yellow")
+        table.add_column("时间", style="dim")
+
+        for item in all_items[:20]:
+            table.add_row(
+                item["tool"],
+                item["id"][:40],
+                str(len(item["messages"])),
+                item["date"]
+            )
+        console.print(table)
+        if len(all_items) > 20:
+            console.print(f"[dim]...还有 {len(all_items) - 20} 项[/dim]")
+        return
+
+    # 双 provider 轮流处理
+    imported = []
+    failed = []
+
+    with Progress() as progress:
+        task = progress.add_task("[cyan]夜间处理中...", total=len(all_items))
+
+        for i, item in enumerate(all_items):
+            # 轮流使用 provider
+            provider_name, provider_instance = providers[i % len(providers)]
+
+            try:
+                result = _sync_conversation_to_wiki(item, wiki_ctx, provider_override=provider_instance)
+                if result:
+                    imported.append(item["file"])
+                    processed_files.add(item["file"])
+                else:
+                    failed.append(item["id"])
+            except Exception as e:
+                console.print(f"\n[red]{item['id'][:20]}: {e}[/red]")
+                failed.append(item["id"])
+
+            progress.update(task, advance=1)
+
+            # 定期保存进度
+            if len(imported) % 5 == 0:
+                sync_record_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(sync_record_path, "w", encoding="utf-8") as f:
+                    json.dump({"processed": list(processed_files)}, f, ensure_ascii=False)
+
+    # 最终保存
+    sync_record_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(sync_record_path, "w", encoding="utf-8") as f:
+        json.dump({"processed": list(processed_files)}, f, ensure_ascii=False, indent=2)
+
+    console.print(f"\n[green]✓[/green] 成功处理 {len(imported)} 项")
+    if failed:
+        console.print(f"[red]✗[/red] 失败 {len(failed)} 项")
+
+
+@conversation.command()
+@click.option("--time", "run_time", default="02:00", help="每天执行时间（默认 02:00）")
+@click.pass_context
+def night_schedule(ctx, run_time):
+    """设置夜间自动处理定时任务。"""
+    import subprocess
+    import sys
+
+    wiki_exe = sys.executable.replace("python.exe", "Scripts\\wiki.exe")
+    task_name = "WikiNightSync"
+
+    ps_cmd = f"""
+$action = New-ScheduledTaskAction -Execute '{wiki_exe}' -Argument 'conversation night'
+$trigger = New-ScheduledTaskTrigger -Daily -At '{run_time}'
+$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 2) -StartWhenAvailable
+Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger $trigger -Settings $settings -Force
+"""
+    result = subprocess.run(
+        ["powershell", "-Command", ps_cmd],
+        capture_output=True, text=True
+    )
+
+    if result.returncode == 0:
+        console.print(f"[green]✓[/green] 已创建夜间定时任务: {task_name}")
+        console.print(f"  每天 {run_time} 自动处理所有未导入的对话和 plan")
+        console.print(f"  使用所有 provider 轮流处理，降低单个 provider 压力")
+        console.print(f"  删除: [cyan]wiki conversation unschedule[/cyan]")
+    else:
+        console.print(f"[red]创建失败:[/red] {result.stderr}")

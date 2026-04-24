@@ -61,14 +61,17 @@ class WikiContext:
             return None
         return self.config.get("providers", {}).get(name)
 
-    def create_provider(self):
-        """Create LLM provider instance from active provider config."""
+    def create_provider(self, name=None):
+        """Create LLM provider instance from active or specified provider config."""
         from .core.provider_anthropic import AnthropicProvider
         from .core.provider_openai import OpenAIProvider
 
-        provider_config = self.get_provider_config()
+        if name:
+            provider_config = self.config.get("providers", {}).get(name)
+        else:
+            provider_config = self.get_provider_config()
         if not provider_config:
-            raise ValueError("No active provider configured")
+            raise ValueError(f"Provider not configured: {name or 'active'}")
 
         provider_type = provider_config.get("type")
         api_key = provider_config.get("api_key")
