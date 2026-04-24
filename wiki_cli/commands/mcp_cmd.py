@@ -25,7 +25,7 @@ def mcp():
 def serve(ctx, test):
     """Start MCP server in foreground (stdio mode).
 
-    ⚠️  This command is designed to be called by AI tools (Claude Code, CodeX, Gemini),
+    WARNING: This command is designed to be called by AI tools (Claude Code, CodeX, Gemini),
     not run directly in terminal. Use 'wiki mcp start' for daemon mode instead.
     """
     wiki_ctx: WikiContext = ctx.obj

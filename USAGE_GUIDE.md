@@ -105,11 +105,8 @@ wiki domain list
 ### 4. 生成 wiki 页面
 
 ```powershell
-# 处理 raw/ 目录下的所有文档
-wiki ingest
-
-# 处理特定文件
-wiki ingest D:/AI/llm-wiki/ai/raw/2026-04-24-transformer.md
+# 处理 raw/ 目录下的所有文档（需要指定 topic）
+wiki ingest D:/AI/llm-wiki/ai/raw/2026-04-24-transformer.md --topic transformers
 
 # 查看生成的页面
 wiki list
@@ -122,7 +119,7 @@ wiki list
 ### 方式一：自动配置（推荐）
 
 ```powershell
-# 自动配置 Claude Code
+# 交互式配置（会依次询问是否配置 Claude Code、CodeX、Gemini）
 wiki mcp setup
 
 # 配置会写入：C:\Users\<你的用户名>\.claude\settings.json
@@ -132,6 +129,7 @@ wiki mcp setup
 1. 找到 wiki.exe 的完整路径
 2. 在 `~/.claude/settings.json` 中添加 MCP 服务器配置
 3. 设置环境变量 `WIKI_DOMAIN` 为当前活跃领域
+4. 可选择配置 CodeX CLI 和 Gemini CLI
 
 ### 方式二：手动配置
 
@@ -159,9 +157,11 @@ wiki mcp setup
 Get-Command wiki | Select-Object -ExpandProperty Source
 ```
 
+**注意**：`wiki mcp setup` 是交互式的，会依次询问是否配置各个工具。
+
 #### CodeX CLI 和 Gemini CLI
 
-目前 `wiki mcp setup` 只支持 Claude Code。如需配置其他工具，请参考各工具的 MCP 配置文档。
+可以通过 `wiki mcp setup` 交互式配置，或参考各工具的 MCP 配置文档手动配置。
 
 ### 验证配置
 
@@ -208,7 +208,7 @@ wiki mcp serve --test
 # 例如：2026-04-24-transformer.md
 
 # 2. 生成 wiki 页面
-wiki ingest D:/AI/llm-wiki/ai/raw/2026-04-24-transformer.md
+wiki ingest D:/AI/llm-wiki/ai/raw/2026-04-24-transformer.md --topic transformers
 
 # 3. 查看生成的页面
 wiki list
@@ -444,8 +444,8 @@ wiki mcp setup
 # 1. 检查是否有 wiki 页面
 wiki list
 
-# 2. 如果没有，运行 ingest
-wiki ingest
+# 2. 如果没有，运行 ingest（需要指定 topic）
+wiki ingest D:/AI/llm-wiki/ai/raw/your-file.md --topic your-topic
 
 # 3. 检查活跃领域
 wiki domain list
@@ -558,7 +558,7 @@ wiki domain use ai             # 切换领域
 
 # 内容管理
 wiki list                      # 列出所有页面
-wiki ingest                    # 生成 wiki 页面
+wiki ingest <file> --topic <topic>  # 生成 wiki 页面
 wiki query "问题"              # 查询 wiki
 
 # MCP
