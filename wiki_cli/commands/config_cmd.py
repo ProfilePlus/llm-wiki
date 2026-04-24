@@ -184,16 +184,75 @@ def config(ctx):
     """查看或修改配置。"""
     if ctx.invoked_subcommand is None:
         cfg = load_config()
-        safe_cfg = cfg.copy()
-        for name, p in safe_cfg.get("providers", {}).items():
-            if "api_key" in p:
-                safe_cfg["providers"][name] = {**p, "api_key": p["api_key"][:8] + "..."}
 
         if is_machine_mode():
+            safe_cfg = cfg.copy()
+            for name, p in safe_cfg.get("providers", {}).items():
+                if "api_key" in p:
+                    safe_cfg["providers"][name] = {**p, "api_key": p["api_key"][:8] + "..."}
             output_json(safe_cfg)
-        else:
-            import json
-            console.print_json(json.dumps(safe_cfg, ensure_ascii=False))
+            return
+
+        from rich.panel import Panel
+        from rich.table import Table
+        from rich.columns import Columns
+        from rich.text import Text
+
+        # 基础配置表
+        base_table = Table(show_header=False, box=None, padding=(0, 2))
+        base_table.add_column("Key", style="cyan", no_wrap=True)
+        base_table.add_column("Value", style="white")
+
+        data_dir = cfg.get("data_dir", "N/A")
+        domain = cfg.get("active_domain") or "[dim]未设置[/dim]"
+        provider = cfg.get("active_provider") or "[dim]未设置[/dim]"
+        lang = cfg.get("language", "zh")
+        lang_display = "中文 (zh)" if lang == "zh" else "English (en)"
+
+        # 统计
+        wiki_count = "N/A"
+        raw_count = "N/A"
+        data_path = Path(data_dir)
+        active_domain = cfg.get("active_domain")
+        if active_domain and data_path.exists():
+            wiki_dir = data_path / active_domain / "wiki"
+            raw_dir = data_path / active_domain / "raw"
+            if wiki_dir.exists():
+                wiki_count = str(len(list(wiki_dir.rglob("*.md"))))
+            if raw_dir.exists():
+                raw_count = str(len(list(raw_dir.rglob("*.md"))))
+
+        base_table.add_row("Data Dir", str(data_dir))
+        base_table.add_row("Domain", str(domain))
+        base_table.add_row("Provider", str(provider))
+        base_table.add_row("Language", lang_display)
+        base_table.add_row("Wiki Pages", wiki_count)
+        base_table.add_row("Raw Docs", raw_count)
+
+        console.print(Panel(base_table, title="[bold]Wiki Config[/bold]", border_style="cyan", padding=(1, 2)))
+
+        # Provider 详情
+        providers = cfg.get("providers", {})
+        if providers:
+            for name, p in providers.items():
+                p_table = Table(show_header=False, box=None, padding=(0, 2))
+                p_table.add_column("Key", style="cyan", no_wrap=True)
+                p_table.add_column("Value", style="white")
+
+                is_active = name == cfg.get("active_provider")
+                p_table.add_row("Type", p.get("type", "N/A"))
+                p_table.add_row("Model", p.get("model", "N/A"))
+                api_key = p.get("api_key", "")
+                p_table.add_row("API Key", api_key[:8] + "..." if api_key else "[dim]未设置[/dim]")
+                if p.get("base_url"):
+                    p_table.add_row("Base URL", p["base_url"])
+
+                title = f"[bold]Provider: {name}[/bold]"
+                if is_active:
+                    title += " [green](active)[/green]"
+                console.print(Panel(p_table, title=title, border_style="yellow", padding=(0, 2)))
+
+        console.print("\n[dim]wiki config set  修改配置  |  wiki mcp serve --test  测试 MCP[/dim]")
 
 
 @config.command("set")
