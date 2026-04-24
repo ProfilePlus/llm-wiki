@@ -12,6 +12,7 @@ dependencies = [
     "rich>=13.0,<16",
     "anthropic>=0.40,<1",
     "openai>=1.50,<2",
+    "mcp>=1.0.0",
 ]
 
 [project.optional-dependencies]

@@ -65,6 +65,7 @@ def show_welcome(wiki_ctx: WikiContext):
     console.print("  [cyan]wiki ingest <file>[/cyan]  [dim]摄入源文档[/dim]")
     console.print("  [cyan]wiki query \"问题\"[/cyan]   [dim]查询 wiki[/dim]")
     console.print("  [cyan]wiki lint[/cyan]           [dim]健康检查[/dim]")
+    console.print("  [cyan]wiki mcp serve[/cyan]      [dim]启动 MCP 服务器[/dim]")
     console.print("  [cyan]wiki status[/cyan]         [dim]详细状态[/dim]")
 
 
@@ -85,6 +86,8 @@ from .commands.ingest import ingest
 from .commands.query import query
 from .commands.lint import lint
 from .commands.language import language
+from .commands.mcp_cmd import mcp
+from .commands.thread import thread
 
 cli.add_command(init)
 cli.add_command(domain)
@@ -105,6 +108,8 @@ cli.add_command(ingest)
 cli.add_command(query)
 cli.add_command(lint)
 cli.add_command(language)
+cli.add_command(mcp)
+cli.add_command(thread)
 
 
 if __name__ == "__main__":
