@@ -21,7 +21,7 @@ STEALTH_DOMAINS = ["mp.weixin.qq.com", "zhuanlan.zhihu.com", "juejin.cn"]
 
 @click.command()
 @click.argument("source", type=click.Path(exists=True))
-@click.option("--topic", required=True, help="topic 目录名")
+@click.option("--topic", default=None, help="topic 目录名（不指定则由 AI 自动判断）")
 @click.pass_context
 def ingest(ctx, source, topic):
     """摄入源文档到 wiki。"""
@@ -43,6 +43,24 @@ def ingest(ctx, source, topic):
 
     source_path = Path(source)
     domain_path = wiki_ctx.domain_path
+
+    if not topic:
+        with console.status("[cyan]AI 正在识别文档主题...[/cyan]", spinner="dots"):
+            try:
+                import asyncio
+                file_content = source_path.read_text(encoding="utf-8")[:2000]
+                topic = asyncio.run(provider.complete(
+                    system="你是一个分类助手。根据文档内容，返回一个简短的英文 topic 名称（小写，用连字符分隔，如 ai-tools、web-dev、cloud-infra）。只返回 topic 名称，不要其他内容。",
+                    messages=[{"role": "user", "content": file_content}],
+                    max_tokens=50,
+                ))
+                topic = topic.strip().lower().replace(" ", "-").replace("_", "-")
+                topic = "".join(c for c in topic if c.isalnum() or c == "-")[:30]
+                if not topic:
+                    topic = "general"
+            except Exception:
+                topic = "general"
+        console.print(f"[green]✓[/green] 主题识别: [cyan]{topic}[/cyan]")
 
     if not is_machine_mode():
         console.print(f"[cyan]正在摄入[/cyan] {source_path.name} → topic: {topic}...")
@@ -91,7 +109,7 @@ def ingest(ctx, source, topic):
 
 @click.command("ingest-url")
 @click.argument("url")
-@click.option("--topic", required=True, help="topic 目录名")
+@click.option("--topic", default=None, help="topic 目录名（不指定则由 AI 自动判断）")
 @click.pass_context
 def ingest_url(ctx, url, topic):
     """抓取网页内容并摄入到 wiki。"""
@@ -140,7 +158,27 @@ def ingest_url(ctx, url, topic):
 
     console.print(f"[green]✓[/green] 抓取成功 ({len(content)} 字符)")
 
-    # 2. 保存为临时文件
+    # 2. 如果没指定 topic，让 AI 自动判断
+    if not topic:
+        with console.status("[cyan]AI 正在识别文章主题...[/cyan]", spinner="dots"):
+            try:
+                provider = wiki_ctx.create_provider()
+                import asyncio
+                topic = asyncio.run(provider.complete(
+                    system="你是一个分类助手。根据文章内容，返回一个简短的英文 topic 名称（小写，用连字符分隔，如 ai-tools、web-dev、cloud-infra）。只返回 topic 名称，不要其他内容。",
+                    messages=[{"role": "user", "content": content[:2000]}],
+                    max_tokens=50,
+                ))
+                topic = topic.strip().lower().replace(" ", "-").replace("_", "-")
+                # 去掉可能的引号和多余字符
+                topic = "".join(c for c in topic if c.isalnum() or c == "-")[:30]
+                if not topic:
+                    topic = "general"
+            except Exception:
+                topic = "general"
+        console.print(f"[green]✓[/green] 主题识别: [cyan]{topic}[/cyan]")
+
+    # 3. 保存为临时文件
     from urllib.parse import urlparse
     slug = urlparse(url).path.strip("/").replace("/", "-")[:50] or "web-article"
 
@@ -148,7 +186,7 @@ def ingest_url(ctx, url, topic):
         f.write(f"# {slug}\n\n> 来源: {url}\n\n{content}")
         tmp_path = Path(f.name)
 
-    # 3. 调用 ingest
+    # 4. 调用 ingest
     with console.status("[cyan]AI 正在提炼知识点...[/cyan]", spinner="dots"):
         try:
             provider = wiki_ctx.create_provider()
