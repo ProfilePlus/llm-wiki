@@ -26,6 +26,20 @@ FETCH_SCRIPT = Path.home() / ".claude" / "skills" / "web-content-fetcher" / "scr
 STEALTH_DOMAINS = ["mp.weixin.qq.com", "zhuanlan.zhihu.com", "juejin.cn"]
 
 
+def _clean_topic(raw: str) -> str:
+    """清洗 LLM 返回的 topic 名称"""
+    # 只取第一行
+    topic = raw.strip().split("\n")[0].strip()
+    # 去掉引号、反引号、句号等
+    topic = topic.strip("\"'`.,;:!?()[]{}。，；：！？")
+    topic = topic.lower().replace(" ", "-").replace("_", "-")
+    # 只保留字母数字和连字符
+    topic = "".join(c for c in topic if c.isalnum() or c == "-")
+    # 去掉首尾和连续的连字符
+    topic = "-".join(part for part in topic.split("-") if part)
+    return topic[:30] if topic else "general"
+
+
 @click.command()
 @click.argument("source", type=click.Path(exists=True))
 @click.option("--topic", default=None, help="topic 目录名（不指定则由 AI 自动判断）")
@@ -57,14 +71,11 @@ def ingest(ctx, source, topic):
                 import asyncio
                 file_content = source_path.read_text(encoding="utf-8")[:2000]
                 topic = asyncio.run(provider.complete(
-                    system="你是一个分类助手。根据文档内容，返回一个简短的英文 topic 名称（小写，用连字符分隔，如 ai-tools、web-dev、cloud-infra）。只返回 topic 名称，不要其他内容。",
+                    system="你是一个分类助手。根据文档内容，返回一个简短的英文 topic 名称。要求：1-3 个单词，小写，用连字符分隔。例如：ai-tools、web-dev、cloud-infra、machine-learning。只输出 topic 名称这一个词，不要任何解释、标点或换行。",
                     messages=[{"role": "user", "content": file_content}],
-                    max_tokens=50,
+                    max_tokens=20,
                 ))
-                topic = topic.strip().lower().replace(" ", "-").replace("_", "-")
-                topic = "".join(c for c in topic if c.isalnum() or c == "-")[:30]
-                if not topic:
-                    topic = "general"
+                topic = _clean_topic(topic)
             except Exception:
                 topic = "general"
         console.print(f"[green]✓[/green] 主题识别: [cyan]{topic}[/cyan]")
@@ -177,15 +188,11 @@ def ingest_url(ctx, url, topic):
                 provider = wiki_ctx.create_provider()
                 import asyncio
                 topic = asyncio.run(provider.complete(
-                    system="你是一个分类助手。根据文章内容，返回一个简短的英文 topic 名称（小写，用连字符分隔，如 ai-tools、web-dev、cloud-infra）。只返回 topic 名称，不要其他内容。",
+                    system="你是一个分类助手。根据文章内容，返回一个简短的英文 topic 名称。要求：1-3 个单词，小写，用连字符分隔。例如：ai-tools、web-dev、cloud-infra、machine-learning。只输出 topic 名称这一个词，不要任何解释、标点或换行。",
                     messages=[{"role": "user", "content": content[:2000]}],
-                    max_tokens=50,
+                    max_tokens=20,
                 ))
-                topic = topic.strip().lower().replace(" ", "-").replace("_", "-")
-                # 去掉可能的引号和多余字符
-                topic = "".join(c for c in topic if c.isalnum() or c == "-")[:30]
-                if not topic:
-                    topic = "general"
+                topic = _clean_topic(topic)
             except Exception:
                 topic = "general"
         console.print(f"[green]✓[/green] 主题识别: [cyan]{topic}[/cyan]")
