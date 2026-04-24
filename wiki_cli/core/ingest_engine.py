@@ -159,3 +159,35 @@ async def ingest_file(
 def ingest_file_sync(source_path: Path, topic: str, domain_path: Path, provider: LLMProvider, language: str = "zh") -> dict:
     """Synchronous wrapper for ingest_file."""
     return asyncio.run(ingest_file(source_path, topic, domain_path, provider, language))
+
+
+async def ingest_conversation(
+    conversation_id: str,
+    messages: list,
+    topic: str,
+    domain_path: Path,
+    provider: LLMProvider,
+    language: str = "zh",
+) -> dict:
+    """将对话内容写入 wiki，复用 ingest_file 逻辑。"""
+    # 格式化对话为 markdown
+    lines = [f"# Conversation: {conversation_id}", f"", f"**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ""]
+    for msg in messages:
+        role = "User" if msg.get("role") == "user" else "Assistant"
+        content = str(msg.get("content", ""))[:2000]  # 截断超长消息
+        lines.append(f"**{role}**: {content}")
+        lines.append("")
+    content = "\n".join(lines)
+
+    # 写入临时文件，复用 ingest_file
+    import tempfile, os
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", encoding="utf-8", delete=False) as f:
+        f.write(content)
+        tmp_path = Path(f.name)
+
+    try:
+        result = await ingest_file(tmp_path, topic, domain_path, provider, language)
+    finally:
+        os.unlink(tmp_path)
+
+    return result

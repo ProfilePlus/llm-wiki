@@ -88,6 +88,7 @@ from .commands.lint import lint
 from .commands.language import language
 from .commands.mcp_cmd import mcp
 from .commands.thread import thread
+from .commands.conversation import conversation
 
 cli.add_command(init)
 cli.add_command(domain)
@@ -110,6 +111,7 @@ cli.add_command(lint)
 cli.add_command(language)
 cli.add_command(mcp)
 cli.add_command(thread)
+cli.add_command(conversation)
 
 
 if __name__ == "__main__":
