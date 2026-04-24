@@ -53,6 +53,7 @@ def config_set(key, value):
             instruction="(↑↓ 选择, Enter 确认, Ctrl-C 取消)",
             border=True,
             cycle=True,
+            style={"border": "fg:#5f87ff"},
         ).execute()
         if key is None:
             return
