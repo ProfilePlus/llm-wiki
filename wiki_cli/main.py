@@ -82,7 +82,7 @@ from .commands.index_cmd import index_cmd
 from .commands.graph import graph
 from .commands.stats import stats
 from .commands.log import log
-from .commands.ingest import ingest
+from .commands.ingest import ingest, ingest_url
 from .commands.query import query
 from .commands.lint import lint
 from .commands.language import language
@@ -106,6 +106,7 @@ cli.add_command(graph)
 cli.add_command(stats)
 cli.add_command(log)
 cli.add_command(ingest)
+cli.add_command(ingest_url)
 cli.add_command(query)
 cli.add_command(lint)
 cli.add_command(language)
