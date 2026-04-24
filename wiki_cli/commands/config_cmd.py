@@ -34,46 +34,61 @@ def config_set(key, value):
     """设置配置项。"""
     from InquirerPy import inquirer
     from InquirerPy.base.control import Choice
-    from InquirerPy.separator import Separator
     cfg = load_config()
-    if not key:
-        keys = [k for k in cfg.keys() if k != "providers"]
-        width = max(len(k) for k in keys) + 2
-        choices = [
-            Choice(value=k, name=f"{k:<{width}}  →  {cfg.get(k,'')}")
-            for k in keys
-        ] + [Separator(line="─" * 40), Choice(value="__other__", name="✎  手动输入其他键名")]
-        key = inquirer.select(
-            message="选择要修改的配置项:",
-            choices=choices,
-            default=keys[0],
-            qmark="▸",
-            amark="✓",
-            pointer="❯",
-            instruction="(↑↓ 选择, Enter 确认, Ctrl-C 取消)",
-            border=True,
-            cycle=True,
-            style={"border": "fg:#5f87ff"},
-        ).execute()
-        if key is None:
-            return
-        if key == "__other__":
-            key = inquirer.text(message="配置项名称:", qmark="▸").execute()
-            if not key:
-                return
-    if value is None:
-        current = cfg.get(key, "")
-        value = inquirer.text(
-            message=f"{key} 的值:",
+
+    # 如果提供了 key 和 value，直接设置
+    if key and value is not None:
+        cfg[key] = value
+        save_config(cfg)
+        if is_machine_mode():
+            output_json({"status": "ok", "key": key, "value": value})
+        else:
+            console.print(f"[green]✓[/green] {key} = {value}")
+        return
+
+    # 交互模式：多选要修改的配置项
+    keys = [k for k in cfg.keys() if k != "providers"]
+    width = max(len(k) for k in keys) + 2
+    choices = [
+        Choice(value=k, name=f"{k:<{width}}  →  {cfg.get(k,'')}", enabled=False)
+        for k in keys
+    ]
+
+    selected_keys = inquirer.checkbox(
+        message="选择要修改的配置项 (空格选中, Enter 确认):",
+        choices=choices,
+        qmark="▸",
+        amark="✓",
+        pointer="❯",
+        instruction="(↑↓ 移动, 空格 选中/取消, Enter 确认)",
+        border=True,
+        cycle=True,
+        style={"border": "fg:#5f87ff"},
+        transformer=lambda result: f"{len(result)} 项已选",
+    ).execute()
+
+    if not selected_keys:
+        console.print("[yellow]未选择任何配置项[/yellow]")
+        return
+
+    # 逐一输入新值
+    updated = {}
+    for k in selected_keys:
+        current = cfg.get(k, "")
+        new_value = inquirer.text(
+            message=f"{k} 的新值:",
             default=str(current) if current else "",
             qmark="▸",
         ).execute()
-        if value is None:
-            return
-    cfg[key] = value
+        if new_value is not None:
+            cfg[k] = new_value
+            updated[k] = new_value
+
     save_config(cfg)
 
     if is_machine_mode():
-        output_json({"status": "ok", "key": key, "value": value})
+        output_json({"status": "ok", "updated": updated})
     else:
-        console.print(f"[green]✓[/green] {key} = {value}")
+        console.print(f"[green]✓[/green] 已更新 {len(updated)} 项配置:")
+        for k, v in updated.items():
+            console.print(f"  • {k} = {v}")
