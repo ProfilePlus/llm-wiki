@@ -17,9 +17,15 @@ def domain():
 
 
 @domain.command("add")
-@click.argument("name")
+@click.argument("name", required=False)
 @click.pass_context
 def domain_add(ctx, name):
+    """创建新领域。"""
+    if not name:
+        name = click.prompt("领域名称 (如 ai / work / life)").strip()
+    if not name:
+        console.print("[red]领域名称不能为空[/red]")
+        return
     """创建新领域。"""
     from pathlib import Path
 

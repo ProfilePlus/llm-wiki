@@ -28,11 +28,18 @@ def config(ctx):
 
 
 @config.command("set")
-@click.argument("key")
-@click.argument("value")
+@click.argument("key", required=False)
+@click.argument("value", required=False)
 def config_set(key, value):
     """设置配置项。"""
     cfg = load_config()
+    if not key:
+        keys = [k for k in cfg.keys() if k != "providers"]
+        console.print("[bold]可配置项:[/bold] " + ", ".join(keys))
+        key = click.prompt("配置项").strip()
+    if value is None:
+        current = cfg.get(key, "")
+        value = click.prompt(f"{key} 的值", default=str(current) if current else None)
     cfg[key] = value
     save_config(cfg)
 

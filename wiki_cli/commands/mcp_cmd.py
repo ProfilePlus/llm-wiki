@@ -185,9 +185,12 @@ def _write_mcp_config_json(config_path: Path, mcp_entry: dict, key: str = "mcpSe
         config[key] = {}
     config[key]["wiki"] = mcp_entry
 
-    # Backup original
+    # Backup original (remove old backup first)
     if config_path.exists():
-        config_path.rename(config_path.with_suffix(".json.bak"))
+        backup_path = config_path.with_suffix(".json.bak")
+        if backup_path.exists():
+            backup_path.unlink()
+        config_path.rename(backup_path)
 
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)

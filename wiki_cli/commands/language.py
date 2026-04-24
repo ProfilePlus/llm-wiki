@@ -19,13 +19,13 @@ def language(ctx, lang):
     current = config.get("language", "zh")
 
     if lang is None:
-        # Show current language
         if is_machine_mode():
             output_json({"language": current, "supported": SUPPORTED_LANGUAGES})
-        else:
-            console.print(f"当前语言: [cyan]{current}[/cyan]")
-            console.print(f"支持的语言: {', '.join(SUPPORTED_LANGUAGES)}")
-        return
+            return
+        console.print(f"当前语言: [cyan]{current}[/cyan]")
+        lang = click.prompt("设置语言", type=click.Choice(SUPPORTED_LANGUAGES), default=current)
+        if lang == current:
+            return
 
     # Set language
     config["language"] = lang
