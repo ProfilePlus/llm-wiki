@@ -35,12 +35,12 @@ def import_all(ctx, tool, dry_run):
     if tool in ["cc", "all"]:
         cc_dir = Path.home() / ".claude" / "projects"
         if cc_dir.exists():
-            tools_to_scan.append(("Claude Code", cc_dir, "cc"))
+            tools_to_scan.append(("Claude Code", cc_dir, "cc", "cc-conversations"))
 
     if tool in ["codex", "all"]:
         codex_dir = Path.home() / ".codex" / "sessions"
         if codex_dir.exists():
-            tools_to_scan.append(("CodeX", codex_dir, "codex"))
+            tools_to_scan.append(("CodeX", codex_dir, "codex", "codex-conversations"))
 
     if tool in ["gemini", "all"]:
         # Gemini 可能没有对话历史，暂时跳过
@@ -61,7 +61,7 @@ def import_all(ctx, tool, dry_run):
 
     console.print("[cyan]正在扫描所有历史对话...[/cyan]")
 
-    for tool_name, tool_dir, tool_key in tools_to_scan:
+    for tool_name, tool_dir, tool_key, topic in tools_to_scan:
         console.print(f"  扫描 {tool_name}...")
         for jsonl_file in tool_dir.rglob("*.jsonl"):
             file_key = str(jsonl_file)
@@ -71,6 +71,7 @@ def import_all(ctx, tool, dry_run):
             conv = _parse_conversation(jsonl_file) if tool_key == "cc" else _parse_codex_conversation(jsonl_file)
             if conv and conv["messages"]:
                 conv["tool"] = tool_name
+                conv["topic"] = topic
                 all_conversations.append(conv)
 
     if not all_conversations:
@@ -165,6 +166,7 @@ def sync(ctx, hours, dry_run):
             continue
         conv = _parse_conversation(jsonl_file)
         if conv and conv["messages"]:
+            conv["topic"] = "cc-conversations"
             recent_conversations.append(conv)
 
     if not recent_conversations:
@@ -287,11 +289,12 @@ def _sync_conversation_to_wiki(conv: dict, wiki_ctx: WikiContext):
     import asyncio
     from ..core.ingest_engine import ingest_conversation
 
+    topic = conv.get("topic", "conversations")
     try:
         return asyncio.run(ingest_conversation(
             conversation_id=conv["id"],
             messages=conv["messages"],
-            topic="conversations",
+            topic=topic,
             domain_path=wiki_ctx.domain_path,
             provider=wiki_ctx.create_provider(),
             language=wiki_ctx.language
