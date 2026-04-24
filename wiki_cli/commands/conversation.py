@@ -12,6 +12,30 @@ from ..context import WikiContext
 console = Console()
 
 
+def _get_conversation_domain(wiki_ctx: WikiContext) -> Path:
+    """获取对话专用 domain 路径，不存在则自动创建"""
+    conv_domain = wiki_ctx.data_dir / "conversations"
+    (conv_domain / "raw").mkdir(parents=True, exist_ok=True)
+    wiki_dir = conv_domain / "wiki"
+    wiki_dir.mkdir(parents=True, exist_ok=True)
+
+    index_path = wiki_dir / "index.md"
+    if not index_path.exists():
+        index_path.write_text(
+            "# Conversations Wiki Index\n\n> AI 工具对话记录，自动收录。\n",
+            encoding="utf-8",
+        )
+
+    log_path = wiki_dir / "log.md"
+    if not log_path.exists():
+        log_path.write_text(
+            "# Conversations Wiki Log\n\n> 操作日志。\n",
+            encoding="utf-8",
+        )
+
+    return conv_domain
+
+
 @click.group()
 def conversation():
     """对话同步命令。"""
@@ -26,9 +50,11 @@ def import_all(ctx, tool, dry_run):
     """一次性导入所有历史对话到 wiki（首次使用）。"""
     wiki_ctx: WikiContext = ctx.obj
 
-    if not wiki_ctx.active_domain:
-        console.print("[red]错误: 未设置活跃领域[/red]")
+    if not wiki_ctx.data_dir:
+        console.print("[red]错误: 未初始化，请先运行 wiki init[/red]")
         return
+
+    conv_domain = _get_conversation_domain(wiki_ctx)
 
     # 查找对话历史目录
     tools_to_scan = []
@@ -147,8 +173,8 @@ def sync(ctx, hours, dry_run):
     """同步最近的 Claude Code 对话到 wiki。"""
     wiki_ctx: WikiContext = ctx.obj
 
-    if not wiki_ctx.active_domain:
-        console.print("[red]错误: 未设置活跃领域[/red]")
+    if not wiki_ctx.data_dir:
+        console.print("[red]错误: 未初始化，请先运行 wiki init[/red]")
         return
 
     claude_projects_dir = Path.home() / ".claude" / "projects"
@@ -289,13 +315,14 @@ def _sync_conversation_to_wiki(conv: dict, wiki_ctx: WikiContext):
     import asyncio
     from ..core.ingest_engine import ingest_conversation
 
-    topic = conv.get("topic", "conversations")
+    topic = conv.get("topic", "cc-conversations")
+    conv_domain = _get_conversation_domain(wiki_ctx)
     try:
         return asyncio.run(ingest_conversation(
             conversation_id=conv["id"],
             messages=conv["messages"],
             topic=topic,
-            domain_path=wiki_ctx.domain_path,
+            domain_path=conv_domain,
             provider=wiki_ctx.create_provider(),
             language=wiki_ctx.language
         ))
