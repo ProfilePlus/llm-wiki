@@ -35,17 +35,16 @@ def import_all(ctx, tool, dry_run):
     if tool in ["cc", "all"]:
         cc_dir = Path.home() / ".claude" / "projects"
         if cc_dir.exists():
-            tools_to_scan.append(("Claude Code", cc_dir))
+            tools_to_scan.append(("Claude Code", cc_dir, "cc"))
 
     if tool in ["codex", "all"]:
-        codex_dir = Path.home() / ".codex" / "conversations"
+        codex_dir = Path.home() / ".codex" / "sessions"
         if codex_dir.exists():
-            tools_to_scan.append(("CodeX", codex_dir))
+            tools_to_scan.append(("CodeX", codex_dir, "codex"))
 
     if tool in ["gemini", "all"]:
-        gemini_dir = Path.home() / ".gemini" / "history"
-        if gemini_dir.exists():
-            tools_to_scan.append(("Gemini", gemini_dir))
+        # Gemini 可能没有对话历史，暂时跳过
+        pass
 
     if not tools_to_scan:
         console.print("[red]错误: 未找到任何对话历史目录[/red]")
@@ -62,14 +61,14 @@ def import_all(ctx, tool, dry_run):
 
     console.print("[cyan]正在扫描所有历史对话...[/cyan]")
 
-    for tool_name, tool_dir in tools_to_scan:
+    for tool_name, tool_dir, tool_key in tools_to_scan:
         console.print(f"  扫描 {tool_name}...")
         for jsonl_file in tool_dir.rglob("*.jsonl"):
             file_key = str(jsonl_file)
             if file_key in processed_files:
-                continue  # 跳过已处理的文件
+                continue
 
-            conv = _parse_conversation(jsonl_file)
+            conv = _parse_conversation(jsonl_file) if tool_key == "cc" else _parse_codex_conversation(jsonl_file)
             if conv and conv["messages"]:
                 conv["tool"] = tool_name
                 all_conversations.append(conv)
@@ -220,6 +219,52 @@ def _parse_conversation(jsonl_file: Path) -> dict:
                             content = "\n".join(text_parts)
                         if content:
                             messages.append({"role": "assistant", "content": content})
+                except json.JSONDecodeError:
+                    continue
+    except Exception as e:
+        console.print(f"[red]解析失败 {jsonl_file.name}: {e}[/red]")
+        return None
+
+    if not messages:
+        return None
+
+    return {
+        "id": session_id or jsonl_file.stem,
+        "file": str(jsonl_file),
+        "messages": messages,
+        "date": datetime.fromtimestamp(jsonl_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+    }
+
+
+def _parse_codex_conversation(jsonl_file: Path) -> dict:
+    """解析 CodeX 对话文件"""
+    messages = []
+    session_id = None
+
+    try:
+        with open(jsonl_file, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    data = json.loads(line)
+                    msg_type = data.get("type")
+
+                    if msg_type == "session_meta":
+                        session_id = data.get("payload", {}).get("id")
+
+                    elif msg_type == "event_msg":
+                        payload = data.get("payload", {})
+                        event_type = payload.get("type")
+
+                        if event_type == "user_message":
+                            content = payload.get("message", "")
+                            if content:
+                                messages.append({"role": "user", "content": content})
+
+                        elif event_type == "assistant_message":
+                            content = payload.get("message", "")
+                            if content:
+                                messages.append({"role": "assistant", "content": content})
+
                 except json.JSONDecodeError:
                     continue
     except Exception as e:
