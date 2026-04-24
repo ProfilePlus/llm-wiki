@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import os
 import sys
+import re
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
@@ -181,6 +182,21 @@ def ingest_url(ctx, url, topic):
 
     console.print(f"[green]✓[/green] 抓取成功 ({len(content)} 字符)")
 
+    # 提取标题（第一个 # 标题）
+    title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+    article_title = title_match.group(1) if title_match else slug
+
+    # 检测长图文（图片多、文字少）
+    image_count = len(re.findall(r'!\[.*?\]\(.*?\)', content))
+    text_content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
+    text_length = len(text_content.strip())
+
+    is_long_image = image_count >= 3 and text_length < 500
+
+    if is_long_image:
+        console.print(f"[yellow]检测到长图文（{image_count} 张图片，{text_length} 字符文本）[/yellow]")
+        console.print(f"[dim]正文内容在图片中，已保留图片链接[/dim]")
+
     # 2. 如果没指定 topic，让 AI 自动判断
     if not topic:
         with console.status("[cyan]AI 正在识别文章主题...[/cyan]", spinner="dots"):
@@ -202,7 +218,16 @@ def ingest_url(ctx, url, topic):
     slug = urlparse(url).path.strip("/").replace("/", "-")[:50] or "web-article"
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".md", encoding="utf-8", delete=False, prefix=f"{slug}-") as f:
-        f.write(f"# {slug}\n\n> 来源: {url}\n\n{content}")
+        # 如果是长图文，添加提示
+        if is_long_image:
+            f.write(f"# {article_title}\n\n> 来源: {url}\n\n")
+            # 只保留图片和标题
+            images = re.findall(r'!\[.*?\]\(.*?\)', content)
+            for img in images:
+                f.write(f"{img}\n\n")
+            f.write("\n---\n\n**注意：** 本文为长图文形式，正文内容在上方图片中。如需提取文字内容，请使用 OCR 工具。\n")
+        else:
+            f.write(f"# {article_title}\n\n> 来源: {url}\n\n{content}")
         tmp_path = Path(f.name)
 
     # 4. 调用 ingest
