@@ -123,8 +123,8 @@ def ingest_url(ctx, url, topic):
     env["PYTHONUTF8"] = "1"
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, env=env)
-        content = result.stdout.strip()
+        result = subprocess.run(cmd, capture_output=True, timeout=60, env=env)
+        content = result.stdout.decode("utf-8", errors="ignore").strip()
     except subprocess.TimeoutExpired:
         console.print("[red]抓取超时（60s）[/red]")
         return
@@ -134,8 +134,9 @@ def ingest_url(ctx, url, topic):
 
     if not content or len(content) < 100:
         console.print("[red]抓取内容为空或太短[/red]")
-        if result.stderr:
-            console.print(f"[dim]{result.stderr[:200]}[/dim]")
+        stderr = result.stderr.decode("utf-8", errors="ignore") if result.stderr else ""
+        if stderr:
+            console.print(f"[dim]{stderr[:200]}[/dim]")
         return
 
     console.print(f"[green]✓[/green] 抓取成功 ({len(content)} 字符)")
