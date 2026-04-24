@@ -111,8 +111,6 @@ def ingest_url(ctx, url, topic):
         console.print("[dim]请先安装: https://github.com/shirenchuang/web-content-fetcher[/dim]")
         return
 
-    console.print(f"[cyan]正在抓取[/cyan] {url}...")
-
     stealth = any(d in url for d in STEALTH_DOMAINS)
     cmd = ["python", str(FETCH_SCRIPT), url, "15000"]
     if stealth:
@@ -122,15 +120,16 @@ def ingest_url(ctx, url, topic):
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
 
-    try:
-        result = subprocess.run(cmd, capture_output=True, timeout=60, env=env)
-        content = result.stdout.decode("utf-8", errors="ignore").strip()
-    except subprocess.TimeoutExpired:
-        console.print("[red]抓取超时（60s）[/red]")
-        return
-    except Exception as e:
-        console.print(f"[red]抓取失败: {e}[/red]")
-        return
+    with console.status("[cyan]正在抓取网页...[/cyan]", spinner="dots"):
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=60, env=env)
+            content = result.stdout.decode("utf-8", errors="ignore").strip()
+        except subprocess.TimeoutExpired:
+            console.print("[red]抓取超时（60s）[/red]")
+            return
+        except Exception as e:
+            console.print(f"[red]抓取失败: {e}[/red]")
+            return
 
     if not content or len(content) < 100:
         console.print("[red]抓取内容为空或太短[/red]")
@@ -150,17 +149,15 @@ def ingest_url(ctx, url, topic):
         tmp_path = Path(f.name)
 
     # 3. 调用 ingest
-    console.print(f"[cyan]正在摄入[/cyan] → topic: {topic}...")
-
-    try:
-        provider = wiki_ctx.create_provider()
-        result = ingest_file_sync(tmp_path, topic, wiki_ctx.domain_path, provider, wiki_ctx.language)
-    except Exception as e:
-        console.print(f"[red]摄入失败: {e}[/red]")
-        return
-    finally:
-        import os
-        os.unlink(tmp_path)
+    with console.status("[cyan]AI 正在提炼知识点...[/cyan]", spinner="dots"):
+        try:
+            provider = wiki_ctx.create_provider()
+            result = ingest_file_sync(tmp_path, topic, wiki_ctx.domain_path, provider, wiki_ctx.language)
+        except Exception as e:
+            console.print(f"[red]摄入失败: {e}[/red]")
+            return
+        finally:
+            os.unlink(tmp_path)
 
     if "error" in result:
         console.print(f"[red]错误: {result['error']}[/red]")
