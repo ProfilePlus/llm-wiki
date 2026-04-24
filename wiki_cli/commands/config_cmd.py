@@ -35,8 +35,16 @@ def config_set(key, value):
     cfg = load_config()
     if not key:
         keys = [k for k in cfg.keys() if k != "providers"]
-        console.print("[bold]可配置项:[/bold] " + ", ".join(keys))
-        key = click.prompt("配置项").strip()
+        console.print("[bold]可配置项:[/bold]")
+        for i, k in enumerate(keys, 1):
+            cur = cfg.get(k, "")
+            console.print(f"  [cyan]{i}[/cyan]. {k} [dim]= {cur}[/dim]")
+        console.print(f"  [cyan]{len(keys)+1}[/cyan]. [dim]手动输入其他键名[/dim]")
+        choice = click.prompt("选择", type=click.IntRange(1, len(keys)+1), default=1)
+        if choice <= len(keys):
+            key = keys[choice-1]
+        else:
+            key = click.prompt("配置项名称").strip()
     if value is None:
         current = cfg.get(key, "")
         value = click.prompt(f"{key} 的值", default=str(current) if current else None)
