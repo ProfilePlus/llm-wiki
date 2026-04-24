@@ -20,28 +20,37 @@
 ### 前置条件
 
 - Python 3.8+
-- 已安装 wiki CLI：`pip install -e .`
+- 已安装 wiki CLI：`pip install -e .`（在项目根目录运行）
 - 至少一个 AI 工具（Claude Code / CodeX CLI / Gemini CLI）
+
+### 验证安装
+
+```powershell
+# Windows PowerShell
+Get-Command wiki
+
+# 或者
+python -m wiki_cli.main --help
+
+# 应该看到 wiki 命令的帮助信息
+```
 
 ### 5 分钟快速体验
 
-```bash
-# 1. 初始化 wiki
+```powershell
+# 1. 初始化 wiki（交互式向导）
 wiki init
 
-# 2. 创建第一个领域
-wiki domain add ai
+# 2. 查看配置
+wiki config
 
-# 3. 配置 provider（以火山方舟为例）
-wiki provider add volcengine
+# 3. 查看已有的 wiki 页面
+wiki list
 
-# 4. 配置 MCP（自动配置三个工具）
+# 4. 配置 MCP（自动配置 Claude Code）
 wiki mcp setup
 
-# 5. 启动 MCP 服务（可选，推荐）
-wiki mcp start
-
-# 6. 在 Claude Code 中测试
+# 5. 在 Claude Code 中测试
 # 打开 Claude Code，输入："搜索我的 wiki 中关于 transformer 的内容"
 ```
 
@@ -51,7 +60,7 @@ wiki mcp start
 
 ### 1. 运行初始化向导
 
-```bash
+```powershell
 wiki init
 ```
 
@@ -64,10 +73,15 @@ wiki init
   - 模型名称
   - Base URL（可选，用于火山方舟等第三方服务）
 
+**注意**：如果已经初始化过，可以用 `wiki config set` 修改配置。
+
 ### 2. 创建知识领域
 
-```bash
-# 创建多个领域
+```powershell
+# 创建领域（交互式）
+wiki domain add
+
+# 或者直接指定名称
 wiki domain add ai        # AI 相关知识
 wiki domain add work      # 工作项目
 wiki domain add life      # 生活记录
@@ -81,22 +95,24 @@ wiki domain list
 
 ### 3. 添加原始文档
 
-```bash
+```powershell
 # 手动添加 markdown 文件到 raw/ 目录
-cp my-notes.md D:/AI/llm-wiki/ai/raw/
+# 例如：D:/AI/llm-wiki/ai/raw/2026-04-24-transformer.md
 
-# 或者直接在 raw/ 目录下创建文件
 # 文件命名建议：YYYY-MM-DD-topic-name.md
 ```
 
 ### 4. 生成 wiki 页面
 
-```bash
+```powershell
 # 处理 raw/ 目录下的所有文档
 wiki ingest
 
 # 处理特定文件
 wiki ingest D:/AI/llm-wiki/ai/raw/2026-04-24-transformer.md
+
+# 查看生成的页面
+wiki list
 ```
 
 ---
@@ -105,141 +121,140 @@ wiki ingest D:/AI/llm-wiki/ai/raw/2026-04-24-transformer.md
 
 ### 方式一：自动配置（推荐）
 
-```bash
-# 自动配置所有三个工具
+```powershell
+# 自动配置 Claude Code
 wiki mcp setup
 
-# 或者只配置特定工具
-wiki mcp setup --tool cc        # Claude Code
-wiki mcp setup --tool codex     # CodeX CLI
-wiki mcp setup --tool gemini    # Gemini CLI
+# 配置会写入：C:\Users\<你的用户名>\.claude\settings.json
 ```
+
+**自动配置做了什么：**
+1. 找到 wiki.exe 的完整路径
+2. 在 `~/.claude/settings.json` 中添加 MCP 服务器配置
+3. 设置环境变量 `WIKI_DOMAIN` 为当前活跃领域
 
 ### 方式二：手动配置
 
 #### Claude Code
 
-编辑 `~/.claude/settings.json`：
+编辑 `C:\Users\<你的用户名>\.claude\settings.json`，添加：
 
 ```json
 {
   "mcpServers": {
     "wiki": {
-      "command": "wiki",
-      "args": ["mcp", "serve"]
-    }
-  }
-}
-```
-
-#### CodeX CLI
-
-编辑 `~/.codex/config.toml`：
-
-```toml
-[mcp_servers.wiki]
-command = "wiki"
-args = ["mcp", "serve"]
-```
-
-#### Gemini CLI
-
-编辑 `~/.gemini/settings.json`：
-
-```json
-{
-  "mcpServers": {
-    "wiki": {
-      "command": "wiki",
+      "command": "C:\\Users\\<你的用户名>\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\wiki.exe",
       "args": ["mcp", "serve"],
-      "env": {}
+      "env": {
+        "WIKI_DOMAIN": "ai"
+      }
     }
   }
 }
 ```
+
+**如何找到 wiki.exe 路径：**
+
+```powershell
+Get-Command wiki | Select-Object -ExpandProperty Source
+```
+
+#### CodeX CLI 和 Gemini CLI
+
+目前 `wiki mcp setup` 只支持 Claude Code。如需配置其他工具，请参考各工具的 MCP 配置文档。
 
 ### 验证配置
 
-```bash
-# 检查 MCP 服务是否正常
-wiki mcp serve
+```powershell
+# 测试 MCP 配置
+wiki mcp serve --test
 
 # 应该看到：
-# MCP server running on stdio...
-# (按 Ctrl+C 退出)
-```
-
-在 AI 工具中测试：
-
-```
-你: "搜索我的 wiki"
-AI: [自动调用 search_wiki 工具]
-AI: "找到以下页面：..."
+# ✓ MCP server configuration OK
+#   Domain: ai
+#   Provider: volcengine
+#   Wiki path: D:\AI\llm-wiki\ai\wiki
 ```
 
 ---
 
 ## 日常使用流程
 
+### 重要提示
+
+**MCP 服务器不需要手动启动！**
+
+- AI 工具（如 Claude Code）会在需要时自动启动 `wiki mcp serve` 作为子进程
+- 你只需要确保配置正确即可
+- **不要**在终端直接运行 `wiki mcp serve`（会报错）
+
 ### 典型工作流
 
 ```
-1. 记录原始信息
+1. 记录原始信息到 raw/
    ↓
-2. AI 提炼知识
+2. 运行 wiki ingest 生成 wiki 页面
    ↓
-3. 跨工具协作
+3. 在 AI 工具中自然对话，AI 自动查询 wiki
    ↓
-4. 持续积累
+4. 持续积累知识
 ```
 
 ### 场景 1：学习新技术
 
-```bash
-# 1. 保存学习笔记到 raw/
-echo "# Transformer 架构学习" > D:/AI/llm-wiki/ai/raw/2026-04-24-transformer.md
-# ... 编辑笔记 ...
+```powershell
+# 1. 创建学习笔记
+# 在 D:/AI/llm-wiki/ai/raw/ 下创建文件
+# 例如：2026-04-24-transformer.md
 
-# 2. 让 AI 提炼知识
+# 2. 生成 wiki 页面
 wiki ingest D:/AI/llm-wiki/ai/raw/2026-04-24-transformer.md
 
-# 3. 在 Claude Code 中使用
+# 3. 查看生成的页面
+wiki list
+
+# 4. 在 Claude Code 中使用
 # 你: "根据我的 wiki，解释 self-attention 机制"
-# CC: [自动查询 wiki] "根据你的笔记，self-attention..."
+# CC: [自动调用 search_wiki] "根据你的笔记，self-attention..."
 ```
 
-### 场景 2：跨工具协作
+### 场景 2：查询 wiki
 
-```bash
-# 1. CodeX 诊断问题
-# 在 CodeX 中: "分析这个内存泄漏"
-# CodeX: 发现 EventEmitter 监听器未清理
+```powershell
+# 命令行查询
+wiki query "transformer 的核心思想是什么"
 
-# 2. 创建 thread 记录
+# 在 Claude Code 中查询
+# 你: "搜索我的 wiki 中关于 transformer 的内容"
+# CC: [自动调用 search_wiki 工具]
+```
+
+### 场景 3：跨工具协作（使用 Thread）
+
+```powershell
+# 1. 创建 thread
 wiki thread create memory-leak \
   --title "API 服务器内存泄漏" \
   --priority high \
   --tags "bug,performance"
 
-# 3. Claude Code 修复
-# 在 CC 中: "继续修复内存泄漏问题"
+# 2. 添加消息
+wiki thread add-message memory-leak "CodeX 发现 EventEmitter 监听器未清理" \
+  --tool codex --action diagnosis
+
+# 3. 在 Claude Code 中继续
+# 你: "继续修复 memory-leak 问题"
 # CC: [查询 thread] "我看到 CodeX 已经定位了问题..."
 
 # 4. 更新 thread
 wiki thread add-message memory-leak "已使用 WeakMap 修复" \
   --tool cc --action fix
 
-# 5. Gemini 优化
-# 在 Gemini 中: "优化内存泄漏修复方案"
-# Gemini: [查询 thread] "基于 CC 的修复..."
-```
+# 5. 查看 thread
+wiki thread show memory-leak
 
-### 场景 3：查询历史决策
-
-```bash
-# 在任何 AI 工具中
-你: "我们之前为什么选择 WeakMap 而不是手动清理？"
-AI: [查询 thread decisions] "根据 thread memory-leak 的决策记录..."
+# 6. 关闭 thread
+wiki thread update memory-leak --status closed
 ```
 
 ---
@@ -248,7 +263,7 @@ AI: [查询 thread decisions] "根据 thread memory-leak 的决策记录..."
 
 ### 1. Thread 管理
 
-```bash
+```powershell
 # 创建 thread
 wiki thread create <id> \
   --title "标题" \
@@ -272,39 +287,25 @@ wiki thread update memory-leak \
   --remove-tags "bug"
 ```
 
-### 2. 常驻 Daemon 模式
+### 2. 链接图分析
 
-```bash
-# 启动 daemon（推荐，避免每次启动开销）
-wiki mcp start
-
-# 查看状态
-wiki mcp status
-
-# 停止 daemon
-wiki mcp stop
-
-# 查看日志
-tail -f ~/.wiki/.daemon/mcp.log  # Unix
-type %USERPROFILE%\.wiki\.daemon\mcp.log  # Windows
-```
-
-### 3. 链接图分析
-
-```bash
+```powershell
 # 查看页面的反向链接
-wiki links <page-slug> --backlinks
+wiki backlinks <page-slug>
 
 # 查看孤立页面
-wiki links --orphans
+wiki orphans
+
+# 查看断链
+wiki broken
 
 # 导出链接图
-wiki graph --format dot > wiki-graph.dot
+wiki graph > wiki-graph.json
 ```
 
-### 4. 质量检查
+### 3. 质量检查
 
-```bash
+```powershell
 # 检查 wiki 质量
 wiki lint
 
@@ -314,9 +315,9 @@ wiki lint
 # - 过短页面（< 100 字）
 ```
 
-### 5. 统计信息
+### 4. 统计信息
 
-```bash
+```powershell
 # 查看 wiki 统计
 wiki stats
 
@@ -327,6 +328,22 @@ wiki stats
 # Average page length: 523 words
 ```
 
+### 5. 配置管理
+
+```powershell
+# 查看当前配置
+wiki config
+
+# 交互式修改配置（带 TUI 界面）
+wiki config set
+
+# 直接修改配置
+wiki config set language en
+
+# 查看/修改语言
+wiki language
+```
+
 ---
 
 ## MCP 工具说明
@@ -334,25 +351,25 @@ wiki stats
 AI 工具可以自动调用以下 MCP 工具：
 
 ### search_wiki
-搜索 wiki 知识库
+搜索 wiki 知识库并返回 AI 生成的答案
 
 ```python
 # AI 内部调用
-search_wiki(query="transformer", limit=10)
+search_wiki(query="transformer 的核心思想")
 ```
 
 ### get_page
 获取指定页面内容
 
 ```python
-get_page(page_slug="concept-self-attention")
+get_page(slug="concept-self-attention")
 ```
 
 ### get_backlinks
 获取反向链接
 
 ```python
-get_backlinks(page_slug="concept-transformer")
+get_backlinks(slug="concept-transformer")
 ```
 
 ### get_thread
@@ -369,38 +386,61 @@ get_thread(thread_id="memory-leak")
 get_recent_threads(limit=10)
 ```
 
+### get_decisions
+获取决策记录
+
+```python
+get_decisions(limit=20)
+```
+
 ---
 
 ## 故障排查
 
-### 问题 1：AI 工具无法调用 wiki
+### 问题 1：找不到 wiki 命令
 
-**症状**：AI 说"我无法访问你的 wiki"
+**症状**：`wiki: command not found` 或 `Get-Command wiki` 无输出
 
 **解决**：
 
-```bash
-# 1. 检查 MCP 配置
-wiki mcp setup --tool cc
+```powershell
+# 1. 检查是否安装
+pip list | Select-String wiki
 
-# 2. 验证 wiki 命令可用
-which wiki  # Unix
-where wiki  # Windows
+# 2. 重新安装
+cd C:\Users\<你的用户名>\Documents\llmwiki\cli
+pip install -e .
 
-# 3. 手动测试 MCP 服务
-wiki mcp serve
-# 应该看到 "MCP server running on stdio..."
-
-# 4. 重启 AI 工具
+# 3. 验证安装
+Get-Command wiki
 ```
 
-### 问题 2：搜索结果为空
+### 问题 2：AI 工具无法调用 wiki
+
+**症状**：Claude Code 说"我无法访问你的 wiki"
+
+**解决**：
+
+```powershell
+# 1. 检查 MCP 配置
+wiki mcp serve --test
+
+# 2. 查看 Claude Code 配置文件
+Get-Content C:\Users\<你的用户名>\.claude\settings.json | ConvertFrom-Json | Select-Object -ExpandProperty mcpServers
+
+# 3. 重新配置
+wiki mcp setup
+
+# 4. 重启 Claude Code
+```
+
+### 问题 3：搜索结果为空
 
 **症状**：AI 调用 search_wiki 返回空结果
 
 **解决**：
 
-```bash
+```powershell
 # 1. 检查是否有 wiki 页面
 wiki list
 
@@ -414,43 +454,17 @@ wiki domain list
 wiki domain use ai
 ```
 
-### 问题 3：Daemon 启动失败
+### 问题 4：运行 `wiki mcp serve` 报错
 
-**症状**：`wiki mcp start` 报错
+**症状**：`Received exception from stream: JSON parsing error`
 
-**解决**：
-
-```bash
-# 1. 检查是否已经在运行
-wiki mcp status
-
-# 2. 如果卡住，强制停止
-wiki mcp stop
-
-# 3. 查看日志
-cat ~/.wiki/.daemon/mcp.log  # Unix
-type %USERPROFILE%\.wiki\.daemon\mcp.log  # Windows
-
-# 4. 清理 PID 文件
-rm ~/.wiki/.daemon/mcp.pid  # Unix
-del %USERPROFILE%\.wiki\.daemon\mcp.pid  # Windows
-```
-
-### 问题 4：Windows 下 prompt_toolkit 报错
-
-**症状**：`NoConsoleScreenBufferError`
+**原因**：`wiki mcp serve` 不应该直接在终端运行，它是给 AI 工具调用的。
 
 **解决**：
 
-在 PowerShell 或 cmd 中运行，不要用 Git Bash：
-
-```powershell
-# PowerShell
-wiki config set
-
-# 或者 cmd
-cmd /c wiki config set
-```
+- **不要**直接运行 `wiki mcp serve`
+- AI 工具会自动启动它作为子进程
+- 如果想测试配置，用 `wiki mcp serve --test`
 
 ### 问题 5：Provider API 调用失败
 
@@ -458,18 +472,31 @@ cmd /c wiki config set
 
 **解决**：
 
-```bash
+```powershell
 # 1. 检查 provider 配置
-wiki provider list
+wiki config
 
 # 2. 测试 API 连接
 wiki query "test"
 
-# 3. 检查 API key 是否正确
-wiki config
+# 3. 如果是火山方舟等第三方，检查 base_url
+wiki config set
 
-# 4. 如果是火山方舟等第三方，检查 base_url
-wiki provider update volcengine --base-url "https://ark.cn-beijing.volces.com/api/coding"
+# 选择 providers 相关配置项修改
+```
+
+### 问题 6：中文乱码
+
+**症状**：命令输出显示乱码
+
+**解决**：
+
+```powershell
+# 设置 PowerShell 编码
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# 或者在配置文件中设置
+# C:\Users\<你的用户名>\Documents\PowerShell\Microsoft.PowerShell_profile.ps1
 ```
 
 ---
@@ -511,61 +538,44 @@ raw/
 
 ### 4. 定期维护
 
-```bash
+```powershell
 # 每周运行一次
 wiki lint              # 检查质量问题
 wiki stats             # 查看统计
-wiki links --orphans   # 清理孤立页面
+wiki orphans           # 清理孤立页面
 ```
 
 ---
 
-## 示例：完整工作流
+## 常用命令速查
 
-```bash
-# === 第一天：学习 Transformer ===
+```powershell
+# 配置
+wiki config                    # 查看配置
+wiki config set                # 交互式修改配置
+wiki domain list               # 查看所有领域
+wiki domain use ai             # 切换领域
 
-# 1. 记录学习笔记
-vim D:/AI/llm-wiki/ai/raw/2026-04-24-transformer.md
+# 内容管理
+wiki list                      # 列出所有页面
+wiki ingest                    # 生成 wiki 页面
+wiki query "问题"              # 查询 wiki
 
-# 2. 生成 wiki
-wiki ingest D:/AI/llm-wiki/ai/raw/2026-04-24-transformer.md
+# MCP
+wiki mcp setup                 # 配置 Claude Code
+wiki mcp serve --test          # 测试配置
 
-# 3. 在 Claude Code 中使用
-# 你: "根据我的 wiki，用简单的语言解释 transformer"
-# CC: [查询 wiki] "根据你的笔记，transformer 是..."
+# Thread
+wiki thread list               # 列出所有 threads
+wiki thread create <id>        # 创建 thread
+wiki thread show <id>          # 查看 thread
+wiki thread update <id>        # 更新 thread
 
-# === 第二天：实现项目 ===
-
-# 4. 在 CodeX 中诊断
-# 你: "这个 attention 实现有什么问题？"
-# CodeX: "发现性能瓶颈..."
-
-# 5. 创建 thread
-wiki thread create attention-perf \
-  --title "Attention 性能优化" \
-  --priority high \
-  --tags "performance,transformer"
-
-# 6. 在 CC 中修复
-# 你: "继续优化 attention 性能"
-# CC: [查询 thread] "CodeX 已经定位了问题..."
-
-# 7. 更新 thread
-wiki thread add-message attention-perf "使用 flash attention 优化" \
-  --tool cc --action optimization
-
-# === 第三天：总结 ===
-
-# 8. 在 Gemini 中总结
-# 你: "总结这次 attention 优化的经验"
-# Gemini: [查询 thread + wiki] "这次优化的关键点是..."
-
-# 9. 保存总结到 wiki
-wiki ingest D:/AI/llm-wiki/ai/raw/2026-04-26-attention-optimization.md
-
-# 10. 关闭 thread
-wiki thread update attention-perf --status closed
+# 质量检查
+wiki lint                      # 检查质量
+wiki stats                     # 查看统计
+wiki orphans                   # 孤立页面
+wiki broken                    # 断链
 ```
 
 ---
@@ -580,12 +590,9 @@ wiki thread update attention-perf --status closed
 
 ## 附录：配置文件位置
 
-| 文件 | 路径 |
-|------|------|
-| Wiki 配置 | `~/.wiki/config.json` |
-| Wiki 数据 | `D:/AI/llm-wiki/` (可自定义) |
-| Claude Code | `~/.claude/settings.json` |
-| CodeX CLI | `~/.codex/config.toml` |
-| Gemini CLI | `~/.gemini/settings.json` |
-| Daemon PID | `~/.wiki/.daemon/mcp.pid` |
-| Daemon 日志 | `~/.wiki/.daemon/mcp.log` |
+| 文件 | 路径 (Windows) |
+|------|----------------|
+| Wiki 配置 | `C:\Users\<用户名>\.wiki\config.json` |
+| Wiki 数据 | `D:\AI\llm-wiki\` (可自定义) |
+| Claude Code | `C:\Users\<用户名>\.claude\settings.json` |
+| Python Scripts | `C:\Users\<用户名>\AppData\Local\Programs\Python\Python312\Scripts\` |
