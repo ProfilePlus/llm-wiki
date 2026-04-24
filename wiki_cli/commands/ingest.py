@@ -29,8 +29,9 @@ STEALTH_DOMAINS = ["mp.weixin.qq.com", "zhuanlan.zhihu.com", "juejin.cn"]
 
 def _clean_topic(raw: str) -> str:
     """清洗 LLM 返回的 topic 名称"""
-    # 只取第一行
+    # 只取第一行，再取第一个单词（空格或逗号分隔）
     topic = raw.strip().split("\n")[0].strip()
+    topic = re.split(r'[,\s]+', topic)[0]  # 取第一个单词
     # 去掉引号、反引号、句号等
     topic = topic.strip("\"'`.,;:!?()[]{}。，；：！？")
     topic = topic.lower().replace(" ", "-").replace("_", "-")
