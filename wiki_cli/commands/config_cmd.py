@@ -32,22 +32,23 @@ def config(ctx):
 @click.argument("value", required=False)
 def config_set(key, value):
     """设置配置项。"""
+    import questionary
     cfg = load_config()
     if not key:
         keys = [k for k in cfg.keys() if k != "providers"]
-        console.print("[bold]可配置项:[/bold]")
-        for i, k in enumerate(keys, 1):
-            cur = cfg.get(k, "")
-            console.print(f"  [cyan]{i}[/cyan]. {k} [dim]= {cur}[/dim]")
-        console.print(f"  [cyan]{len(keys)+1}[/cyan]. [dim]手动输入其他键名[/dim]")
-        choice = click.prompt("选择", type=click.IntRange(1, len(keys)+1), default=1)
-        if choice <= len(keys):
-            key = keys[choice-1]
-        else:
-            key = click.prompt("配置项名称").strip()
+        choices = [questionary.Choice(f"{k}  [dim]{cfg.get(k,'')}[/dim]", value=k) for k in keys] + [questionary.Choice("手动输入其他键名", value="__other__")]
+        key = questionary.select("选择配置项", choices=choices).ask()
+        if key is None:
+            return
+        if key == "__other__":
+            key = questionary.text("配置项名称").ask()
+            if not key:
+                return
     if value is None:
         current = cfg.get(key, "")
-        value = click.prompt(f"{key} 的值", default=str(current) if current else None)
+        value = questionary.text(f"{key} 的值", default=str(current) if current else "").ask()
+        if value is None:
+            return
     cfg[key] = value
     save_config(cfg)
 

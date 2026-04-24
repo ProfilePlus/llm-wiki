@@ -22,9 +22,17 @@ def language(ctx, lang):
         if is_machine_mode():
             output_json({"language": current, "supported": SUPPORTED_LANGUAGES})
             return
+        import questionary
         console.print(f"当前语言: [cyan]{current}[/cyan]")
-        lang = click.prompt("设置语言", type=click.Choice(SUPPORTED_LANGUAGES), default=current)
-        if lang == current:
+        lang = questionary.select(
+            "选择语言",
+            choices=[
+                questionary.Choice("中文 (zh)", value="zh"),
+                questionary.Choice("English (en)", value="en"),
+            ],
+            default="中文 (zh)" if current == "zh" else "English (en)",
+        ).ask()
+        if lang is None or lang == current:
             return
 
     # Set language
