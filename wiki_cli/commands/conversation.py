@@ -45,8 +45,10 @@ def conversation():
 @conversation.command()
 @click.option("--tool", type=click.Choice(["cc", "codex", "gemini", "all"]), default="all", help="导入哪个工具的对话")
 @click.option("--dry-run", is_flag=True, help="预览模式，不实际导入")
+@click.option("--min-messages", default=5, help="最少消息数，低于此数的对话跳过")
+@click.option("--limit", default=0, help="最多导入几个对话（0=不限）")
 @click.pass_context
-def import_all(ctx, tool, dry_run):
+def import_all(ctx, tool, dry_run, min_messages, limit):
     """一次性导入所有历史对话到 wiki（首次使用）。"""
     wiki_ctx: WikiContext = ctx.obj
 
@@ -69,7 +71,6 @@ def import_all(ctx, tool, dry_run):
             tools_to_scan.append(("CodeX", codex_dir, "codex", "codex-conversations"))
 
     if tool in ["gemini", "all"]:
-        # Gemini 可能没有对话历史，暂时跳过
         pass
 
     if not tools_to_scan:
@@ -84,6 +85,7 @@ def import_all(ctx, tool, dry_run):
             processed_files = set(json.load(f).get("processed", []))
 
     all_conversations = []
+    skipped = 0
 
     console.print("[cyan]正在扫描所有历史对话...[/cyan]")
 
@@ -96,15 +98,28 @@ def import_all(ctx, tool, dry_run):
 
             conv = _parse_conversation(jsonl_file) if tool_key == "cc" else _parse_codex_conversation(jsonl_file)
             if conv and conv["messages"]:
+                if len(conv["messages"]) < min_messages:
+                    skipped += 1
+                    continue
                 conv["tool"] = tool_name
                 conv["topic"] = topic
                 all_conversations.append(conv)
 
     if not all_conversations:
         console.print("[yellow]未找到新的对话（可能已全部导入）[/yellow]")
+        if skipped:
+            console.print(f"[dim]跳过 {skipped} 个短对话（< {min_messages} 条消息）[/dim]")
         return
 
-    console.print(f"[green]找到 {len(all_conversations)} 个未导入的对话[/green]")
+    # 按消息数降序排列（优先导入内容多的对话）
+    all_conversations.sort(key=lambda c: len(c["messages"]), reverse=True)
+
+    if limit > 0:
+        all_conversations = all_conversations[:limit]
+
+    console.print(f"[green]找到 {len(all_conversations)} 个待导入对话[/green]")
+    if skipped:
+        console.print(f"[dim]跳过 {skipped} 个短对话（< {min_messages} 条消息）[/dim]")
 
     if dry_run:
         from rich.table import Table
@@ -114,7 +129,7 @@ def import_all(ctx, tool, dry_run):
         table.add_column("消息数", style="yellow")
         table.add_column("时间", style="dim")
 
-        for conv in all_conversations[:20]:  # 只显示前 20 个
+        for conv in all_conversations[:20]:
             table.add_row(
                 conv["tool"],
                 conv["id"][:40],
@@ -129,7 +144,7 @@ def import_all(ctx, tool, dry_run):
         return
 
     # 确认导入
-    console.print(f"\n[yellow]即将导入 {len(all_conversations)} 个对话，这可能需要较长时间。[/yellow]")
+    console.print(f"\n[yellow]即将导入 {len(all_conversations)} 个对话。[/yellow]")
     if not click.confirm("确认继续？", default=True):
         console.print("[yellow]已取消[/yellow]")
         return
@@ -150,12 +165,18 @@ def import_all(ctx, tool, dry_run):
                 else:
                     failed.append(conv["id"])
             except Exception as e:
-                console.print(f"[red]导入失败 {conv['id']}: {e}[/red]")
+                console.print(f"\n[red]导入失败 {conv['id'][:20]}: {e}[/red]")
                 failed.append(conv["id"])
 
             progress.update(task, advance=1)
 
-    # 保存已处理记录
+            # 每成功导入一个就保存记录（防止中断丢失进度）
+            if len(imported) % 5 == 0:
+                sync_record_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(sync_record_path, "w", encoding="utf-8") as f:
+                    json.dump({"processed": list(processed_files)}, f, ensure_ascii=False)
+
+    # 最终保存
     sync_record_path.parent.mkdir(parents=True, exist_ok=True)
     with open(sync_record_path, "w", encoding="utf-8") as f:
         json.dump({"processed": list(processed_files)}, f, ensure_ascii=False, indent=2)

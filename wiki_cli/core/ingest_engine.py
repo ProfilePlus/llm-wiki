@@ -170,11 +170,15 @@ async def ingest_conversation(
     language: str = "zh",
 ) -> dict:
     """将对话内容写入 wiki，复用 ingest_file 逻辑。"""
+    # 截断超长对话：只保留最近 50 条消息
+    if len(messages) > 50:
+        messages = messages[-50:]
+
     # 格式化对话为 markdown
     lines = [f"# Conversation: {conversation_id}", f"", f"**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ""]
     for msg in messages:
         role = "User" if msg.get("role") == "user" else "Assistant"
-        content = str(msg.get("content", ""))[:2000]  # 截断超长消息
+        content = str(msg.get("content", ""))[:1000]
         lines.append(f"**{role}**: {content}")
         lines.append("")
     content = "\n".join(lines)
