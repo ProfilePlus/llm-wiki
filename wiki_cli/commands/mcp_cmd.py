@@ -20,9 +20,14 @@ def mcp():
 
 
 @mcp.command()
+@click.option("--test", is_flag=True, help="Test mode (print info and exit)")
 @click.pass_context
-def serve(ctx):
-    """Start MCP server in foreground (stdio mode)."""
+def serve(ctx, test):
+    """Start MCP server in foreground (stdio mode).
+
+    ⚠️  This command is designed to be called by AI tools (Claude Code, CodeX, Gemini),
+    not run directly in terminal. Use 'wiki mcp start' for daemon mode instead.
+    """
     wiki_ctx: WikiContext = ctx.obj
 
     if not wiki_ctx.active_domain:
@@ -37,8 +42,29 @@ def serve(ctx):
         console.print("[red]Error: Wiki directory does not exist[/red]")
         sys.exit(1)
 
+    if test:
+        console.print("[green]✓[/green] MCP server configuration OK")
+        console.print(f"  Domain: {wiki_ctx.active_domain}")
+        console.print(f"  Provider: {wiki_ctx.active_provider}")
+        console.print(f"  Wiki path: {wiki_ctx.wiki_path}")
+        console.print("\n[dim]To start daemon: wiki mcp start[/dim]")
+        return
+
+    # Check if running in terminal (not as subprocess)
+    if sys.stdin.isatty():
+        console.print("[yellow]⚠️  Warning: MCP server should not be run directly in terminal.[/yellow]")
+        console.print("\nThis command is designed to be called by AI tools via stdio.")
+        console.print("\n[bold]To use MCP server:[/bold]")
+        console.print("  1. Start daemon:  [cyan]wiki mcp start[/cyan]")
+        console.print("  2. Configure AI:  [cyan]wiki mcp setup[/cyan]")
+        console.print("  3. Test config:   [cyan]wiki mcp serve --test[/cyan]")
+        console.print("\n[dim]Press Ctrl+C to exit, or wait for AI tool to connect...[/dim]\n")
+
     try:
         run_server(wiki_ctx)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Server stopped[/yellow]")
+        sys.exit(0)
     except Exception as e:
         console.print(f"[red]Server error: {e}[/red]")
         sys.exit(1)
