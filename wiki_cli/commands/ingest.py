@@ -3,6 +3,8 @@
 import click
 import subprocess
 import tempfile
+import os
+import sys
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
@@ -12,6 +14,11 @@ from ..core.ingest_engine import ingest_file_sync
 from ..output import is_machine_mode, output_json
 
 console = Console()
+
+# 强制 UTF-8 输出，避免 Windows GBK 编码问题
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 FETCH_SCRIPT = Path.home() / ".claude" / "skills" / "web-content-fetcher" / "scripts" / "fetch.py"
 
