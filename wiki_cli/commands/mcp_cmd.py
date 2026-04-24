@@ -122,80 +122,90 @@ def status(ctx):
 
 
 @mcp.command()
-@click.option("--tool", type=click.Choice(["cc", "codex", "gemini", "all"]), default="all")
 @click.pass_context
-def setup(ctx, tool):
-    """Generate MCP configuration for AI tools."""
+def setup(ctx):
+    """Interactive MCP configuration for AI tools."""
+    import shutil
+    from rich.prompt import Confirm
+
     wiki_ctx: WikiContext = ctx.obj
 
     if not wiki_ctx.active_domain:
         console.print("[red]Error: No active domain[/red]")
         sys.exit(1)
 
-    # Get wiki CLI path
-    import shutil
     wiki_bin = shutil.which("wiki")
     if not wiki_bin:
         console.print("[red]Error: wiki command not found in PATH[/red]")
         sys.exit(1)
 
-    configs = {}
+    mcp_entry = {
+        "command": wiki_bin,
+        "args": ["mcp", "serve"],
+        "env": {"WIKI_DOMAIN": wiki_ctx.active_domain}
+    }
 
-    # Claude Code (CC) config
-    if tool in ["cc", "all"]:
-        cc_config = {
-            "mcpServers": {
-                "wiki": {
-                    "command": wiki_bin,
-                    "args": ["mcp", "serve"],
-                    "env": {
-                        "WIKI_DOMAIN": wiki_ctx.active_domain
-                    }
-                }
-            }
-        }
-        configs["claude_code"] = cc_config
+    console.print("[bold cyan]Wiki MCP 交互式配置[/bold cyan]\n")
 
-    # CodeX config (similar format)
-    if tool in ["codex", "all"]:
-        codex_config = {
-            "mcpServers": {
-                "wiki": {
-                    "command": wiki_bin,
-                    "args": ["mcp", "serve"]
-                }
-            }
-        }
-        configs["codex"] = codex_config
+    # Claude Code
+    cc_settings = Path.home() / ".claude" / "settings.json"
+    if Confirm.ask(f"配置 Claude Code ({cc_settings})?", default=True):
+        _write_mcp_config_json(cc_settings, mcp_entry, key="mcpServers")
+        console.print(f"[green]✓[/green] Claude Code 配置完成")
 
-    # Gemini config
-    if tool in ["gemini", "all"]:
-        gemini_config = {
-            "servers": {
-                "wiki": {
-                    "command": wiki_bin,
-                    "args": ["mcp", "serve"]
-                }
-            }
-        }
-        configs["gemini"] = gemini_config
+    # CodeX CLI
+    codex_config = Path.home() / ".codex" / "config.toml"
+    if Confirm.ask(f"配置 CodeX CLI ({codex_config})?", default=True):
+        _write_mcp_config_toml(codex_config, wiki_bin)
+        console.print(f"[green]✓[/green] CodeX CLI 配置完成")
 
-    # Display configs
-    console.print("[cyan]MCP Configuration:[/cyan]\n")
+    # Gemini CLI
+    gemini_settings = Path.home() / ".gemini" / "settings.json"
+    if Confirm.ask(f"配置 Gemini CLI ({gemini_settings})?", default=True):
+        _write_mcp_config_json(gemini_settings, {k: v for k, v in mcp_entry.items() if k != "env"}, key="mcpServers")
+        console.print(f"[green]✓[/green] Gemini CLI 配置完成")
 
-    if "claude_code" in configs:
-        console.print("[bold]Claude Code (~/.claude/settings.json):[/bold]")
-        console.print(json.dumps(configs["claude_code"], indent=2))
-        console.print()
+    console.print("\n[bold green]配置完成！重启 AI 工具后生效。[/bold green]")
+    console.print("[dim]提示：运行 wiki mcp start --daemon 启动常驻服务以获得更好性能[/dim]")
 
-    if "codex" in configs:
-        console.print("[bold]CodeX (~/.codex/config.json):[/bold]")
-        console.print(json.dumps(configs["codex"], indent=2))
-        console.print()
 
-    if "gemini" in configs:
-        console.print("[bold]Gemini (~/.gemini/mcp.json):[/bold]")
-        console.print(json.dumps(configs["gemini"], indent=2))
-        console.print()
+def _write_mcp_config_json(config_path: Path, mcp_entry: dict, key: str = "mcpServers"):
+    """Merge wiki MCP entry into a JSON config file."""
+    config_path.parent.mkdir(parents=True, exist_ok=True)
 
-    console.print("[dim]Copy the relevant config to your AI tool's configuration file.[/dim]")
+    config = {}
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except Exception:
+            pass
+
+    if key not in config:
+        config[key] = {}
+    config[key]["wiki"] = mcp_entry
+
+    # Backup original
+    if config_path.exists():
+        config_path.rename(config_path.with_suffix(".json.bak"))
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+
+def _write_mcp_config_toml(config_path: Path, wiki_bin: str):
+    """Append wiki MCP entry to CodeX TOML config."""
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Read existing content
+    existing = ""
+    if config_path.exists():
+        existing = config_path.read_text(encoding="utf-8")
+
+    # Remove old wiki entry if exists
+    lines = [l for l in existing.splitlines() if not l.startswith("[mcp_servers.wiki]")]
+    new_content = "\n".join(lines).rstrip()
+
+    # Append new entry
+    wiki_entry = f'\n\n[mcp_servers.wiki]\ncommand = "{wiki_bin}"\nargs = ["mcp", "serve"]\n'
+    config_path.write_text(new_content + wiki_entry, encoding="utf-8")
