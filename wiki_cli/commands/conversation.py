@@ -19,6 +19,127 @@ def conversation():
 
 
 @conversation.command()
+@click.option("--tool", type=click.Choice(["cc", "codex", "gemini", "all"]), default="all", help="导入哪个工具的对话")
+@click.option("--dry-run", is_flag=True, help="预览模式，不实际导入")
+@click.pass_context
+def import_all(ctx, tool, dry_run):
+    """一次性导入所有历史对话到 wiki（首次使用）。"""
+    wiki_ctx: WikiContext = ctx.obj
+
+    if not wiki_ctx.active_domain:
+        console.print("[red]错误: 未设置活跃领域[/red]")
+        return
+
+    # 查找对话历史目录
+    tools_to_scan = []
+    if tool in ["cc", "all"]:
+        cc_dir = Path.home() / ".claude" / "projects"
+        if cc_dir.exists():
+            tools_to_scan.append(("Claude Code", cc_dir))
+
+    if tool in ["codex", "all"]:
+        codex_dir = Path.home() / ".codex" / "conversations"
+        if codex_dir.exists():
+            tools_to_scan.append(("CodeX", codex_dir))
+
+    if tool in ["gemini", "all"]:
+        gemini_dir = Path.home() / ".gemini" / "history"
+        if gemini_dir.exists():
+            tools_to_scan.append(("Gemini", gemini_dir))
+
+    if not tools_to_scan:
+        console.print("[red]错误: 未找到任何对话历史目录[/red]")
+        return
+
+    # 加载已处理记录
+    sync_record_path = Path.home() / ".wiki" / "conversation_sync.json"
+    processed_files = set()
+    if sync_record_path.exists():
+        with open(sync_record_path, "r", encoding="utf-8") as f:
+            processed_files = set(json.load(f).get("processed", []))
+
+    all_conversations = []
+
+    console.print("[cyan]正在扫描所有历史对话...[/cyan]")
+
+    for tool_name, tool_dir in tools_to_scan:
+        console.print(f"  扫描 {tool_name}...")
+        for jsonl_file in tool_dir.rglob("*.jsonl"):
+            file_key = str(jsonl_file)
+            if file_key in processed_files:
+                continue  # 跳过已处理的文件
+
+            conv = _parse_conversation(jsonl_file)
+            if conv and conv["messages"]:
+                conv["tool"] = tool_name
+                all_conversations.append(conv)
+
+    if not all_conversations:
+        console.print("[yellow]未找到新的对话（可能已全部导入）[/yellow]")
+        return
+
+    console.print(f"[green]找到 {len(all_conversations)} 个未导入的对话[/green]")
+
+    if dry_run:
+        from rich.table import Table
+        table = Table(title="待导入对话")
+        table.add_column("工具", style="cyan")
+        table.add_column("对话 ID", style="white")
+        table.add_column("消息数", style="yellow")
+        table.add_column("时间", style="dim")
+
+        for conv in all_conversations[:20]:  # 只显示前 20 个
+            table.add_row(
+                conv["tool"],
+                conv["id"][:40],
+                str(len(conv["messages"])),
+                conv["date"]
+            )
+
+        console.print(table)
+        if len(all_conversations) > 20:
+            console.print(f"[dim]...还有 {len(all_conversations) - 20} 个对话[/dim]")
+        console.print("\n[dim]去掉 --dry-run 执行实际导入[/dim]")
+        return
+
+    # 确认导入
+    console.print(f"\n[yellow]即将导入 {len(all_conversations)} 个对话，这可能需要较长时间。[/yellow]")
+    if not click.confirm("确认继续？", default=True):
+        console.print("[yellow]已取消[/yellow]")
+        return
+
+    # 批量导入
+    imported = []
+    failed = []
+
+    with Progress() as progress:
+        task = progress.add_task("[cyan]导入中...", total=len(all_conversations))
+
+        for conv in all_conversations:
+            try:
+                result = _sync_conversation_to_wiki(conv, wiki_ctx)
+                if result:
+                    imported.append(conv["file"])
+                    processed_files.add(conv["file"])
+                else:
+                    failed.append(conv["id"])
+            except Exception as e:
+                console.print(f"[red]导入失败 {conv['id']}: {e}[/red]")
+                failed.append(conv["id"])
+
+            progress.update(task, advance=1)
+
+    # 保存已处理记录
+    sync_record_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(sync_record_path, "w", encoding="utf-8") as f:
+        json.dump({"processed": list(processed_files)}, f, ensure_ascii=False, indent=2)
+
+    console.print(f"\n[green]✓[/green] 成功导入 {len(imported)} 个对话")
+    if failed:
+        console.print(f"[red]✗[/red] 失败 {len(failed)} 个")
+
+
+@conversation.command()
 @click.option("--hours", default=1, help="同步最近 N 小时的对话")
 @click.option("--dry-run", is_flag=True, help="预览模式，不实际同步")
 @click.pass_context
