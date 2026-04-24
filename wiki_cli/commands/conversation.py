@@ -1,4 +1,4 @@
-"""wiki conversation - Sync Claude Code conversations to wiki."""
+"""wiki conversation - 同步 Claude Code 对话到 wiki。"""
 
 import click
 import json
@@ -14,67 +14,60 @@ console = Console()
 
 @click.group()
 def conversation():
-    """Sync Claude Code conversations to wiki."""
+    """对话同步命令。"""
     pass
 
 
 @conversation.command()
-@click.option("--hours", default=1, help="Sync conversations from last N hours")
-@click.option("--dry-run", is_flag=True, help="Show what would be synced without actually syncing")
+@click.option("--hours", default=1, help="同步最近 N 小时的对话")
+@click.option("--dry-run", is_flag=True, help="预览模式，不实际同步")
 @click.pass_context
 def sync(ctx, hours, dry_run):
-    """Sync recent Claude Code conversations to wiki."""
+    """同步最近的 Claude Code 对话到 wiki。"""
     wiki_ctx: WikiContext = ctx.obj
 
     if not wiki_ctx.active_domain:
-        console.print("[red]Error: No active domain[/red]")
+        console.print("[red]错误: 未设置活跃领域[/red]")
         return
 
-    # Claude Code 对话历史路径
     claude_projects_dir = Path.home() / ".claude" / "projects"
     if not claude_projects_dir.exists():
-        console.print("[red]Error: Claude Code projects directory not found[/red]")
+        console.print("[red]错误: 未找到 Claude Code 对话目录[/red]")
         return
 
-    # 查找最近的对话文件
     cutoff_time = datetime.now() - timedelta(hours=hours)
     recent_conversations = []
 
-    console.print(f"[cyan]Scanning conversations from last {hours} hour(s)...[/cyan]")
+    console.print(f"[cyan]正在扫描最近 {hours} 小时的对话...[/cyan]")
 
     for jsonl_file in claude_projects_dir.rglob("*.jsonl"):
-        # 跳过非对话文件
         if jsonl_file.stat().st_mtime < cutoff_time.timestamp():
             continue
-
-        # 解析对话
-        conversation = _parse_conversation(jsonl_file)
-        if conversation and conversation["messages"]:
-            recent_conversations.append(conversation)
+        conv = _parse_conversation(jsonl_file)
+        if conv and conv["messages"]:
+            recent_conversations.append(conv)
 
     if not recent_conversations:
-        console.print("[yellow]No recent conversations found[/yellow]")
+        console.print("[yellow]未找到最近的对话[/yellow]")
         return
 
-    console.print(f"[green]Found {len(recent_conversations)} conversation(s)[/green]")
+    console.print(f"[green]找到 {len(recent_conversations)} 个对话[/green]")
 
     if dry_run:
         for conv in recent_conversations:
             console.print(f"\n[bold]{conv['id']}[/bold]")
-            console.print(f"  Messages: {len(conv['messages'])}")
-            console.print(f"  Date: {conv['date']}")
-        console.print("\n[dim]Run without --dry-run to sync[/dim]")
+            console.print(f"  消息数: {len(conv['messages'])}")
+            console.print(f"  时间: {conv['date']}")
+        console.print("\n[dim]去掉 --dry-run 执行实际同步[/dim]")
         return
 
-    # 同步到 wiki
     with Progress() as progress:
-        task = progress.add_task("[cyan]Syncing...", total=len(recent_conversations))
-
+        task = progress.add_task("[cyan]同步中...", total=len(recent_conversations))
         for conv in recent_conversations:
             _sync_conversation_to_wiki(conv, wiki_ctx)
             progress.update(task, advance=1)
 
-    console.print(f"[green]✓[/green] Synced {len(recent_conversations)} conversation(s)")
+    console.print(f"[green]✓[/green] 已同步 {len(recent_conversations)} 个对话")
 
 
 def _parse_conversation(jsonl_file: Path) -> dict:
@@ -91,16 +84,13 @@ def _parse_conversation(jsonl_file: Path) -> dict:
 
                     if msg_type == "permission-mode":
                         session_id = data.get("sessionId")
-
                     elif msg_type == "user":
                         content = data.get("message", {}).get("content", "")
                         if content:
                             messages.append({"role": "user", "content": content})
-
                     elif msg_type == "assistant":
                         content = data.get("message", {}).get("content", "")
                         if isinstance(content, list):
-                            # 提取文本内容
                             text_parts = [
                                 item.get("text", "")
                                 for item in content
@@ -109,12 +99,10 @@ def _parse_conversation(jsonl_file: Path) -> dict:
                             content = "\n".join(text_parts)
                         if content:
                             messages.append({"role": "assistant", "content": content})
-
                 except json.JSONDecodeError:
                     continue
-
     except Exception as e:
-        console.print(f"[red]Error parsing {jsonl_file.name}: {e}[/red]")
+        console.print(f"[red]解析失败 {jsonl_file.name}: {e}[/red]")
         return None
 
     if not messages:
@@ -128,19 +116,36 @@ def _parse_conversation(jsonl_file: Path) -> dict:
     }
 
 
+def _sync_conversation_to_wiki(conv: dict, wiki_ctx: WikiContext):
+    """将对话同步到 wiki"""
+    import asyncio
+    from ..core.ingest_engine import ingest_conversation
+
+    try:
+        return asyncio.run(ingest_conversation(
+            conversation_id=conv["id"],
+            messages=conv["messages"],
+            topic="conversations",
+            domain_path=wiki_ctx.domain_path,
+            provider=wiki_ctx.create_provider(),
+            language=wiki_ctx.language
+        ))
+    except Exception as e:
+        console.print(f"[red]同步失败 {conv['id']}: {e}[/red]")
+        return None
+
+
 @conversation.command()
-@click.option("--hours", default=1, help="Sync interval in hours")
+@click.option("--hours", default=1, help="同步间隔（小时）")
 @click.pass_context
 def schedule(ctx, hours):
-    """Setup hourly auto-sync via Windows Task Scheduler."""
+    """创建定时任务，每小时自动同步对话。"""
     import subprocess
     import sys
 
     wiki_exe = sys.executable.replace("python.exe", "Scripts\\wiki.exe")
     task_name = "WikiConversationSync"
-    cmd = f'"{wiki_exe}" conversation sync --hours {hours}'
 
-    # 创建 Windows 计划任务
     ps_cmd = f"""
 $action = New-ScheduledTaskAction -Execute '{wiki_exe}' -Argument 'conversation sync --hours {hours}'
 $trigger = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Hours {hours}) -Once -At (Get-Date)
@@ -155,8 +160,8 @@ Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger $trigger
     if result.returncode == 0:
         console.print(f"[green]✓[/green] 已创建定时任务: {task_name}")
         console.print(f"  每 {hours} 小时自动同步对话到 wiki")
-        console.print(f"  查看任务: [cyan]Get-ScheduledTask -TaskName {task_name}[/cyan]")
-        console.print(f"  删除任务: [cyan]Unregister-ScheduledTask -TaskName {task_name}[/cyan]")
+        console.print(f"  查看: [cyan]Get-ScheduledTask -TaskName {task_name}[/cyan]")
+        console.print(f"  删除: [cyan]wiki conversation unschedule[/cyan]")
     else:
         console.print(f"[red]创建定时任务失败:[/red] {result.stderr}")
         console.print(f"\n[dim]手动运行: wiki conversation sync --hours {hours}[/dim]")
@@ -164,7 +169,7 @@ Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger $trigger
 
 @conversation.command()
 def unschedule():
-    """Remove auto-sync scheduled task."""
+    """删除定时同步任务。"""
     import subprocess
     result = subprocess.run(
         ["powershell", "-Command", "Unregister-ScheduledTask -TaskName 'WikiConversationSync' -Confirm:$false"],
@@ -174,19 +179,3 @@ def unschedule():
         console.print("[green]✓[/green] 已删除定时任务")
     else:
         console.print(f"[red]删除失败:[/red] {result.stderr}")
-    import asyncio
-    from ..core.ingest_engine import ingest_conversation
-
-    try:
-        result = asyncio.run(ingest_conversation(
-            conversation_id=conversation["id"],
-            messages=conversation["messages"],
-            topic="conversations",
-            domain_path=wiki_ctx.domain_path,
-            provider=wiki_ctx.create_provider(),
-            language=wiki_ctx.language
-        ))
-        return result
-    except Exception as e:
-        console.print(f"[red]Error syncing {conversation['id']}: {e}[/red]")
-        return None
