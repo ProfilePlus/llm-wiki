@@ -187,14 +187,27 @@ def ingest_url(ctx, url, topic):
     article_title = title_match.group(1) if title_match else slug
 
     # 检测长图文（图片多、文字少）
-    image_count = len(re.findall(r'!\[.*?\]\(.*?\)', content))
+    images = re.findall(r'!\[.*?\]\((.*?)\)', content)
     text_content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
     text_length = len(text_content.strip())
 
-    is_long_image = image_count >= 3 and text_length < 500
+    is_long_image = len(images) >= 3 and text_length < 500
+
+    # 去重：如果前两张图片大小相近（可能是重复封面），只保留第二张
+    if len(images) >= 2:
+        try:
+            from pathlib import Path
+            img1_size = Path(images[0]).stat().st_size if Path(images[0]).exists() else 0
+            img2_size = Path(images[1]).stat().st_size if Path(images[1]).exists() else 0
+            # 如果第一张图明显更大（>5倍），可能是低质量头图，删除
+            if img1_size > img2_size * 5:
+                images = images[1:]
+                console.print(f"[dim]已去除重复封面图[/dim]")
+        except Exception:
+            pass
 
     if is_long_image:
-        console.print(f"[yellow]检测到长图文（{image_count} 张图片，{text_length} 字符文本）[/yellow]")
+        console.print(f"[yellow]检测到长图文（{len(images)} 张图片，{text_length} 字符文本）[/yellow]")
         console.print(f"[dim]正文内容在图片中，已保留图片链接[/dim]")
 
     # 2. 如果没指定 topic，让 AI 自动判断
@@ -221,10 +234,8 @@ def ingest_url(ctx, url, topic):
         # 如果是长图文，添加提示
         if is_long_image:
             f.write(f"# {article_title}\n\n> 来源: {url}\n\n")
-            # 只保留图片和标题
-            images = re.findall(r'!\[.*?\]\(.*?\)', content)
-            for img in images:
-                f.write(f"{img}\n\n")
+            for img_path in images:
+                f.write(f"![]({img_path})\n\n")
             f.write("\n---\n\n**注意：** 本文为长图文形式，正文内容在上方图片中。如需提取文字内容，请使用 OCR 工具。\n")
         else:
             f.write(f"# {article_title}\n\n> 来源: {url}\n\n{content}")
